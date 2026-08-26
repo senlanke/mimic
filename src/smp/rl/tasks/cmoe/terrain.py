@@ -8,21 +8,26 @@
 
 from __future__ import annotations
 
-import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import mujoco
 import numpy as np
 import torch
 from mjlab.terrains.terrain_generator import (
-  SubTerrainCfg,
   TerrainGeneratorCfg,
-  TerrainGeometry,
   TerrainOutput,
 )
 from scipy import interpolate, ndimage
 
+from smp.rl.tasks.cmoe.height_field.hf_terrains_cfg import (
+  HfTerrainBaseCfg,
+  _height_field_to_hfield_surface_mesh,
+  _height_field_to_output,
+)
+
 _HORIZONTAL_SCALE = 0.05
+_COLLISION_HORIZONTAL_SCALE = 0.1
+_COLLISION_STRIDE = 2
 _VERTICAL_SCALE = 0.005
 _DOWNSAMPLED_SCALE = 0.075
 _TERRAIN_SIZE = (10.0, 10.0)
@@ -288,78 +293,55 @@ def _make_raw(kind: str, difficulty: float, rng: np.random.Generator) -> np.ndar
   return raw
 
 
-def _heightfield_output(
-  raw: np.ndarray,
-  spec: mujoco.MjSpec,
-  spawn_at_center: bool,
-) -> TerrainOutput:
-  body = spec.body("terrain")
-  minimum = int(raw.min())
-  maximum = int(raw.max())
-  elevation_range = max(maximum - minimum, 1)
-  normalized = (raw - minimum) / elevation_range
-  name = uuid.uuid4().hex
-  field = spec.add_hfield(
-    name=f"cmoe_hfield_{name}",
-    size=[
-      _TERRAIN_SIZE[0] / 2,
-      _TERRAIN_SIZE[1] / 2,
-      elevation_range * _VERTICAL_SCALE,
-      0.05,
-    ],
-    nrow=raw.shape[1],
-    ncol=raw.shape[0],
-    userdata=normalized.T.astype(np.float32).flatten().tolist(),
-  )
-  material = spec.add_material(
-    name=f"cmoe_terrain_material_{name}",
-    rgba=(0.42, 0.46, 0.39, 1.0),
-  )
-  hfield_geom = body.add_geom(
-    type=mujoco.mjtGeom.mjGEOM_HFIELD,
-    hfieldname=field.name,
-    pos=[_TERRAIN_SIZE[0] / 2, _TERRAIN_SIZE[1] / 2, minimum * _VERTICAL_SCALE],
-    material=material.name,
-    friction=(0.8, 0.005, 0.0001),
-  )
-  if spawn_at_center:
-    x1, x2 = int(4.0 / _HORIZONTAL_SCALE), int(6.0 / _HORIZONTAL_SCALE)
-    y1, y2 = int(4.0 / _HORIZONTAL_SCALE), int(6.0 / _HORIZONTAL_SCALE)
-    spawn_height = float(raw[x1:x2, y1:y2].max() * _VERTICAL_SCALE)
-  else:
-    spawn_height = 0.0
-  spawn_x = _TERRAIN_SIZE[0] / 2 if spawn_at_center else 0.75
-  return TerrainOutput(
-    origin=np.array([spawn_x, _TERRAIN_SIZE[1] / 2, spawn_height]),
-    geometries=[TerrainGeometry(geom=hfield_geom, hfield=field)],
-  )
-
-
 @dataclass(kw_only=True)
-class CMoETerrainCfg(SubTerrainCfg):
+class CMoETerrainCfg(HfTerrainBaseCfg):
   kind: str
   horizontal_scale: float = _HORIZONTAL_SCALE
   vertical_scale: float = _VERTICAL_SCALE
+  slope_threshold: float = 1.5
   height_fields: list[np.ndarray] = field(default_factory=list, init=False, repr=False)
 
   def function(
-    self, difficulty: float, spec: mujoco.MjSpec, rng: np.random.Generator
+    self,
+    difficulty: float,
+    spec: mujoco.MjSpec,
+    rng: np.random.Generator,
   ) -> TerrainOutput:
-    # TerrainGenerator adds a sub-row jitter. Recover the original row value.
     difficulty = np.floor(difficulty * 10.0) / 10.0
     raw = _make_raw(self.kind, difficulty, rng)
     self.height_fields.append(raw)
-    return _heightfield_output(
-      raw,
-      spec,
-      self.kind
-      not in {
-        "parkour_gap",
-        "parkour_hurdle",
-        "mix",
-        "narrow_stairs",
-      },
+    collision_cfg = replace(
+      self,
+      horizontal_scale=_COLLISION_HORIZONTAL_SCALE,
     )
+    output = _height_field_to_output(
+      heights=raw[::_COLLISION_STRIDE, ::_COLLISION_STRIDE].T,
+      cfg=collision_cfg,
+      spec=spec,
+      rng=rng,
+    )
+    output.instinct_surface_mesh = _height_field_to_hfield_surface_mesh(raw.T, self)
+    parkour = self.kind in {
+      "parkour_gap",
+      "parkour_hurdle",
+      "mix",
+      "narrow_stairs",
+    }
+    if parkour:
+      output.origin = np.array([0.75, self.size[1] * 0.5, 0.0])
+    else:
+      x1 = int((self.size[0] * 0.5 - 1.0) / self.horizontal_scale)
+      x2 = int((self.size[0] * 0.5 + 1.0) / self.horizontal_scale)
+      y1 = int((self.size[1] * 0.5 - 1.0) / self.horizontal_scale)
+      y2 = int((self.size[1] * 0.5 + 1.0) / self.horizontal_scale)
+      output.origin = np.array(
+        [
+          self.size[0] * 0.5,
+          self.size[1] * 0.5,
+          raw[x1:x2, y1:y2].max() * self.vertical_scale,
+        ]
+      )
+    return output
 
 
 def cmoe_terrain_generator_cfg(play: bool = False) -> TerrainGeneratorCfg:

@@ -18,6 +18,81 @@ from rsl_rl.env import VecEnv
 from tensordict import TensorDict
 
 
+_PROPRIO_FIELDS = (
+  ("command", 0, 3),
+  ("base_ang_vel", 3, 6),
+  ("projected_gravity", 6, 9),
+  ("joint_pos", 9, 21),
+  ("joint_vel", 21, 33),
+  ("action", 33, 45),
+)
+
+
+def _check_observation_slice(
+  tensor: torch.Tensor,
+  name: str,
+  start: int,
+  end: int,
+  stage: str,
+  actions: torch.Tensor | None = None,
+) -> None:
+  value = tensor[:, start:end]
+  invalid = ~torch.isfinite(value)
+  if not invalid.any():
+    return
+  indices = invalid.nonzero(as_tuple=False)
+  env_ids = indices[:, 0].unique().cpu().tolist()
+  dimensions = indices[:, 1].unique().cpu().tolist()
+  action_values = (
+    f", actions={actions[env_ids].cpu().tolist()}" if actions is not None else ""
+  )
+  raise RuntimeError(
+    f"CMoE non-finite rollout observation at {stage}: {name}: "
+    f"env_ids={env_ids}, local_dims={dimensions}, "
+    f"nan={torch.isnan(value).sum().item()}, inf={torch.isinf(value).sum().item()}"
+    f"{action_values}"
+  )
+
+
+def _check_rollout_observations(
+  obs: TensorDict, stage: str, actions: torch.Tensor | None = None
+) -> None:
+  actor = obs["actor"]
+  for frame in range(10):
+    offset = frame * 45
+    for name, start, end in _PROPRIO_FIELDS:
+      _check_observation_slice(
+        actor,
+        f"actor.history[{frame}].{name}",
+        offset + start,
+        offset + end,
+        stage,
+        actions,
+      )
+  _check_observation_slice(actor, "actor.height_scan", 450, 527, stage, actions)
+
+  critic = obs["critic"]
+  for name, start, end in _PROPRIO_FIELDS:
+    _check_observation_slice(critic, f"critic.{name}", start, end, stage, actions)
+  _check_observation_slice(critic, "critic.base_lin_vel", 45, 48, stage, actions)
+  _check_observation_slice(
+    critic, "critic.external_force", 48, 51, stage, actions
+  )
+  _check_observation_slice(critic, "critic.height_scan", 51, 128, stage, actions)
+
+
+def _check_rollout_tensor(tensor: torch.Tensor, name: str, stage: str) -> None:
+  invalid = ~torch.isfinite(tensor)
+  if invalid.any():
+    indices = invalid.nonzero(as_tuple=False)
+    env_ids = indices[:, 0].unique().cpu().tolist()
+    raise RuntimeError(
+      f"CMoE non-finite rollout tensor at {stage}: {name}: "
+      f"env_ids={env_ids}, nan={torch.isnan(tensor).sum().item()}, "
+      f"inf={torch.isinf(tensor).sum().item()}"
+    )
+
+
 class CMoERunner(MjlabOnPolicyRunner):
   """Run the original CMoE rollout/update loop on an MJLab VecEnv.
 
@@ -96,6 +171,7 @@ class CMoERunner(MjlabOnPolicyRunner):
       )
 
     obs = self.env.get_observations().to(self.device)
+    _check_rollout_observations(obs, "initial observation")
     self.alg.train_mode()
     if self.is_distributed:
       print(f"Synchronizing parameters for rank {self.gpu_global_rank}...")
@@ -107,17 +183,26 @@ class CMoERunner(MjlabOnPolicyRunner):
     for it in range(start_it, total_it):
       start = time.time()
       with torch.inference_mode():
-        for _ in range(self.cfg["num_steps_per_env"]):
+        for rollout_step in range(self.cfg["num_steps_per_env"]):
+          stage = f"iteration={it}, rollout_step={rollout_step}, before action"
+          _check_rollout_observations(obs, stage)
           actions = self.alg.act(obs)
+          _check_rollout_tensor(actions, "actions", stage)
           terminal_obs, rewards, dones, extras = self.env.step(
             actions.to(self.env.device)
           )
           terminal_obs = terminal_obs.to(self.device)
           rewards = rewards.to(self.device)
           dones = dones.to(self.device)
+          stage = f"iteration={it}, rollout_step={rollout_step}, after simulation"
+          _check_rollout_observations(terminal_obs, stage, actions)
+          _check_rollout_tensor(rewards, "rewards", stage)
           step_extras = dict(extras)
           terminal_critic_obs = self.alg._select_obs(terminal_obs, "critic")
           obs = self._reset_done(terminal_obs, dones)
+          _check_rollout_observations(
+            obs, f"iteration={it}, rollout_step={rollout_step}, after reset"
+          )
           self.alg.process_env_step(
             obs,
             rewards,

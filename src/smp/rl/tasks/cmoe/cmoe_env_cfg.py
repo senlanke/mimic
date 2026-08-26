@@ -27,10 +27,12 @@ from mjlab.sensor import (
 from mjlab.sim import MujocoCfg, SimulationCfg
 from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
 from mjlab.terrains import TerrainEntityCfg
+from mjlab.utils.nan_guard import NanGuardCfg
 from mjlab.viewer import ViewerConfig
 
 from smp.rl.tasks.cmoe import mdp
 from smp.rl.tasks.cmoe.asset import (
+  COLLISION_GEOM_PATTERN,
   LOWER_BODY_JOINTS,
   LOWER_TORQUE_LIMITS,
   LOWER_VELOCITY_LIMITS,
@@ -228,9 +230,11 @@ def g1_cmoe_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
       func=dr.geom_friction,
       mode="reset",
       params={
-        "asset_cfg": SceneEntityCfg("robot", geom_names=r".*_collision_.*"),
+        "asset_cfg": SceneEntityCfg(
+          "robot", geom_names=COLLISION_GEOM_PATTERN
+        ),
         "operation": "abs",
-        "ranges": (0.0, 1.0),
+        "ranges": (0.3, 1.0),
         "shared_random": True,
       },
     ),
@@ -420,6 +424,7 @@ def g1_cmoe_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     ),
     sim=SimulationCfg(
       mujoco=MujocoCfg(timestep=0.005),
+      nan_guard=NanGuardCfg(enabled=True),
     ),
     decimation=4,
     episode_length_s=20.0,

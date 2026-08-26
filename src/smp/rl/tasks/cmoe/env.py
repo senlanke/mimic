@@ -18,13 +18,6 @@ def cmoe_step(
   self: "ManagerBasedRlEnv", action: torch.Tensor
 ) -> types.VecEnvStepReturn:
   """Run command and perturbation callbacks before termination and reward."""
-  if not self.cfg.auto_reset and torch.any(self._manual_reset_pending):
-    pending_ids = self._manual_reset_pending.nonzero(as_tuple=False).squeeze(-1)
-    raise RuntimeError(
-      f"Environments {pending_ids.cpu().tolist()} must be reset via "
-      "reset(env_ids=...) before calling step() again when auto_reset=False."
-    )
-
   self.extras["log"] = dict()
   self.action_manager.process_action(action.to(self.device))
 

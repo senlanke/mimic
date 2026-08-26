@@ -25,6 +25,34 @@ from tensordict import TensorDict
 from .storage import RolloutStorage
 
 
+def _tensor_stats(tensor: torch.Tensor) -> str:
+  finite = torch.isfinite(tensor)
+  values = tensor[finite]
+  bounds = (
+    f"min={values.min().item():.6g}, max={values.max().item():.6g}"
+    if values.numel()
+    else "min=nan, max=nan"
+  )
+  return (
+    f"shape={tuple(tensor.shape)}, {bounds}, "
+    f"nan={torch.isnan(tensor).sum().item()}, "
+    f"inf={torch.isinf(tensor).sum().item()}"
+  )
+
+
+def _check_tensor(name: str, tensor: torch.Tensor, stage: str) -> None:
+  if not torch.isfinite(tensor).all():
+    raise RuntimeError(f"CMoE non-finite at {stage}: {name}: {_tensor_stats(tensor)}")
+
+
+def _check_tensordict(name: str, data: TensorDict, stage: str) -> None:
+  for key, value in data.items():
+    if isinstance(value, TensorDict):
+      _check_tensordict(f"{name}.{key}", value, stage)
+    else:
+      _check_tensor(f"{name}.{key}", value, stage)
+
+
 class CMoEPPO:
   """PPO with the CMoE estimators and prototype objective."""
 
@@ -86,6 +114,32 @@ class CMoEPPO:
       parameters = chain(parameters, self.critic.parameters())
     self.optimizer = resolve_optimizer(optimizer)(parameters, lr=learning_rate)
     self.rnd = None
+    self._update_index = 0
+
+  def _check_parameters(self, stage: str) -> None:
+    for name, parameter in self._raw_actor.named_parameters():
+      _check_tensor(name, parameter, stage)
+    if self._raw_critic is not self._raw_actor:
+      for name, parameter in self._raw_critic.named_parameters():
+        _check_tensor(f"critic.{name}", parameter, stage)
+
+  def _check_gradients(self, stage: str) -> None:
+    for name, parameter in self._raw_actor.named_parameters():
+      if parameter.grad is not None:
+        _check_tensor(name, parameter.grad, stage)
+    if self._raw_critic is not self._raw_actor:
+      for name, parameter in self._raw_critic.named_parameters():
+        if parameter.grad is not None:
+          _check_tensor(f"critic.{name}", parameter.grad, stage)
+
+  def _check_std(self, stage: str) -> None:
+    std = self._raw_actor.distribution.std_param
+    _check_tensor("distribution.std_param", std, stage)
+    if (std < 0.0).any():
+      raise RuntimeError(
+        f"CMoE invalid std at {stage}: distribution.std_param: "
+        f"{_tensor_stats(std)}"
+      )
 
   def act(self, obs: TensorDict) -> torch.Tensor:
     """Compute and record the action and both observations for one step."""
@@ -145,15 +199,41 @@ class CMoEPPO:
     mean_contrastive_loss = 0.0
     entropy_mean = 0.0
 
-    for batch in self.storage.mini_batch_generator(
-      self.num_mini_batches, self.num_learning_epochs
+    for mini_batch_index, batch in enumerate(
+      self.storage.mini_batch_generator(
+        self.num_mini_batches, self.num_learning_epochs
+      )
     ):
+      stage = f"update={self._update_index}, minibatch={mini_batch_index}"
+      self._check_parameters(f"{stage}, before forward")
+      _check_tensordict("observations", batch.observations, stage)
+      _check_tensordict("critic_observations", batch.critic_observations, stage)
+      _check_tensordict(
+        "next_critic_observations", batch.next_critic_observations, stage
+      )
+      for name in (
+        "actions",
+        "old_actions_log_prob",
+        "old_mu",
+        "old_sigma",
+        "advantages",
+        "returns",
+        "target_values",
+      ):
+        _check_tensor(name, getattr(batch, name), stage)
+      self._check_std(f"{stage}, before forward")
+
       self.actor.act(batch.observations)
       actions_log_prob = self.actor.get_output_log_prob(batch.actions)
       value = self.actor.evaluate(batch.critic_observations)
       mu = self.actor.output_mean
       sigma = self.actor.output_std
       entropy = self.actor.output_entropy
+      _check_tensor("actions_log_prob", actions_log_prob, stage)
+      _check_tensor("value", value, stage)
+      _check_tensor("mu", mu, stage)
+      _check_tensor("sigma", sigma, stage)
+      _check_tensor("entropy", entropy, stage)
       entropy_mean += entropy.mean().item()
 
       if self.desired_kl is not None and self.schedule == "adaptive":
@@ -166,6 +246,8 @@ class CMoEPPO:
             axis=-1,
           )
           kl_mean = torch.mean(kl)
+          _check_tensor("kl", kl, stage)
+          _check_tensor("kl_mean", kl_mean, stage)
           if self.is_multi_gpu:
             torch.distributed.all_reduce(kl_mean, op=torch.distributed.ReduceOp.SUM)
             kl_mean /= self.gpu_world_size
@@ -188,7 +270,15 @@ class CMoEPPO:
         lr=self.learning_rate,
         gradient_sync=self.reduce_gradients if self.is_multi_gpu else None,
       )
+      _check_tensor(
+        "estimator_losses",
+        torch.as_tensor(estimator_losses, device=self.device),
+        stage,
+      )
+      self._check_parameters(f"{stage}, after estimator step")
+      self._check_std(f"{stage}, after estimator step")
       contrastive_loss = self.actor.compute_contrastive_loss(batch.observations)
+      _check_tensor("contrastive_loss", contrastive_loss, stage)
 
       ratio = torch.exp(actions_log_prob - torch.squeeze(batch.old_actions_log_prob))
       surrogate = -torch.squeeze(batch.advantages) * ratio
@@ -196,6 +286,8 @@ class CMoEPPO:
         ratio, 1.0 - self.clip_param, 1.0 + self.clip_param
       )
       surrogate_loss = torch.max(surrogate, surrogate_clipped).mean()
+      _check_tensor("ratio", ratio, stage)
+      _check_tensor("surrogate_loss", surrogate_loss, stage)
 
       if self.use_clipped_value_loss:
         value_clipped = batch.target_values + (value - batch.target_values).clamp(
@@ -206,6 +298,7 @@ class CMoEPPO:
         value_loss = torch.max(value_losses, value_losses_clipped).mean()
       else:
         value_loss = (batch.returns - value).pow(2).mean()
+      _check_tensor("value_loss", value_loss, stage)
 
       loss = (
         surrogate_loss
@@ -213,14 +306,18 @@ class CMoEPPO:
         - self.entropy_coef * entropy.mean()
         + contrastive_loss
       )
+      _check_tensor("loss", loss, stage)
       self.optimizer.zero_grad()
       loss.backward()
+      self._check_gradients(f"{stage}, after backward")
       if self.is_multi_gpu:
         self.reduce_parameters()
       nn.utils.clip_grad_norm_(self.actor.parameters(), self.max_grad_norm)
       if self.critic is not self.actor:
         nn.utils.clip_grad_norm_(self.critic.parameters(), self.max_grad_norm)
       self.optimizer.step()
+      self._check_parameters(f"{stage}, after optimizer step")
+      self._check_std(f"{stage}, after optimizer step")
 
       mean_value_loss += value_loss.item()
       mean_surrogate_loss += surrogate_loss.item()
@@ -236,6 +333,7 @@ class CMoEPPO:
 
     num_updates = self.num_learning_epochs * self.num_mini_batches
     self.storage.clear()
+    self._update_index += 1
     return {
       "value": mean_value_loss / num_updates,
       "surrogate": mean_surrogate_loss / num_updates,

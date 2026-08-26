@@ -14,16 +14,10 @@ import torch
 from mjlab.actuator import Actuator, ActuatorCfg, ActuatorCmd
 from mjlab.entity import Entity, EntityArticulationInfoCfg, EntityCfg
 from mjlab.utils.spec import create_position_actuator
-from mjlab.utils.spec_config import CollisionCfg
 
-_G1_URDF = (
-  Path(__file__).parent
-  / "assets"
-  / "g1"
-  / "29dof_urdf"
-  / "g1_29dof_with_hand_fixed_modify_collision.urdf"
+_G1_MJCF = (
+  Path(__file__).parent / "assets" / "g1" / "xml" / "g1_12dof_cmoe.xml"
 )
-_G1_MESHES = _G1_URDF.parent.parent / "meshes"
 
 LOWER_BODY_JOINTS = (
   "left_hip_pitch_joint",
@@ -44,6 +38,7 @@ LOWER_TORQUE_LIMITS = (88.0, 139.0, 88.0, 139.0, 50.0, 50.0) * 2
 LOWER_STIFFNESS = (100.0, 100.0, 100.0, 150.0, 40.0, 40.0) * 2
 LOWER_DAMPING = (2.0, 2.0, 2.0, 4.0, 2.0, 2.0) * 2
 LOWER_DEFAULT_TARGETS = (-0.1, 0.0, 0.0, 0.3, -0.2, 0.0) * 2
+COLLISION_GEOM_PATTERN = r".*_collision.*"
 
 
 @dataclass(kw_only=True)
@@ -144,31 +139,8 @@ class CMoEPositionActuator(Actuator[CMoEPositionActuatorCfg]):
 
 
 def get_cmoe_g1_spec() -> mujoco.MjSpec:
-  """Load the 12-DoF URDF and add the CMoE sensor attachment sites."""
-  spec = mujoco.MjSpec.from_file(str(_G1_URDF))
-  spec.compiler.meshdir = str(_G1_MESHES)
-  spec.body("pelvis").add_freejoint(name="freejoint")
-
-  collision_index = 0
-  for geom in spec.geoms:
-    if geom.contype:
-      geom.name = f"{geom.parent.name}_collision_{collision_index}"
-      collision_index += 1
-
-  spec.body("pelvis").add_site(name="cmoe_scan_frame", pos=(0.4, 0.0, 0.0))
-  sample_positions = (
-    (0.03, 0.0, -0.035),
-    (0.12, 0.0, -0.035),
-    (-0.05, 0.0, -0.035),
-    (0.06, 0.03, -0.035),
-    (0.06, -0.03, -0.035),
-  )
-  for side in ("left", "right"):
-    foot = spec.body(f"{side}_ankle_roll_link")
-    foot.add_site(name=f"{side}_foot", pos=(0.0, 0.0, 0.0))
-    for index, position in enumerate(sample_positions, 1):
-      foot.add_site(name=f"cmoe_{side}_foot_sample_point{index}", pos=position)
-  return spec
+  """Load the fixed-waist 12-DoF CMoE G1 asset."""
+  return mujoco.MjSpec.from_file(str(_G1_MJCF))
 
 
 def get_cmoe_g1_robot_cfg() -> EntityCfg:
@@ -195,12 +167,6 @@ def get_cmoe_g1_robot_cfg() -> EntityCfg:
       joint_vel={".*": 0.0},
     ),
     spec_fn=get_cmoe_g1_spec,
-    collisions=(
-      CollisionCfg(
-        geom_names_expr=(r".*_collision_.*",),
-        condim={r"^(left|right)_ankle_roll_link_collision_.*$": 3, ".*": 3},
-      ),
-    ),
     articulation=EntityArticulationInfoCfg(
       actuators=actuators,
       soft_joint_pos_limit_factor=0.9,
@@ -209,6 +175,7 @@ def get_cmoe_g1_robot_cfg() -> EntityCfg:
 
 
 __all__ = [
+  "COLLISION_GEOM_PATTERN",
   "LOWER_BODY_JOINTS",
   "LOWER_TORQUE_LIMITS",
   "LOWER_VELOCITY_LIMITS",
