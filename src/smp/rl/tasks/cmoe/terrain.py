@@ -362,7 +362,7 @@ def cmoe_terrain_generator_cfg(play: bool = False) -> TerrainGeneratorCfg:
     num_cols=len(column_kinds),
     color_scheme="none",
     sub_terrains=sub_terrains,
-    add_lights=True,
+    add_lights=False,
   )
 
 
