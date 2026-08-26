@@ -423,7 +423,11 @@ def g1_cmoe_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
       azimuth=90.0,
     ),
     sim=SimulationCfg(
-      mujoco=MujocoCfg(timestep=0.005),
+      mujoco=MujocoCfg(
+        timestep=0.005,
+        iterations=10,
+        ls_iterations=20,
+      ),
       nan_guard=NanGuardCfg(enabled=True),
     ),
     decimation=4,
