@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import time
+from types import MethodType
 from typing import Any
 
 import torch
@@ -33,6 +34,9 @@ class CMoERunner(MjlabOnPolicyRunner):
     log_dir: str | None = None,
     device: str = "cpu",
   ) -> None:
+    from smp.rl.tasks.cmoe.env import cmoe_step
+
+    env.unwrapped.step = MethodType(cmoe_step, env.unwrapped)
     super().__init__(env, train_cfg, log_dir, device)
 
   def _reset_done(self, terminal_obs: TensorDict, dones: torch.Tensor) -> TensorDict:
@@ -131,6 +135,7 @@ class CMoERunner(MjlabOnPolicyRunner):
 
       loss_dict = self.alg.update()
       stop = time.time()
+      self.current_learning_iteration = it
       self.logger.log(
         it=it,
         start_it=start_it,

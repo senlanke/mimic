@@ -5,11 +5,15 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 import mujoco
-from mjlab.actuator import BuiltinPositionActuatorCfg
-from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
+import mujoco_warp as mjwarp
+import torch
+from mjlab.actuator import Actuator, ActuatorCfg, ActuatorCmd
+from mjlab.entity import Entity, EntityArticulationInfoCfg, EntityCfg
+from mjlab.utils.spec import create_position_actuator
 from mjlab.utils.spec_config import CollisionCfg
 
 _G1_URDF = (
@@ -37,6 +41,106 @@ LOWER_BODY_JOINTS = (
 )
 LOWER_VELOCITY_LIMITS = (32.0, 20.0, 32.0, 20.0, 37.0, 37.0) * 2
 LOWER_TORQUE_LIMITS = (88.0, 139.0, 88.0, 139.0, 50.0, 50.0) * 2
+LOWER_STIFFNESS = (100.0, 100.0, 100.0, 150.0, 40.0, 40.0) * 2
+LOWER_DAMPING = (2.0, 2.0, 2.0, 4.0, 2.0, 2.0) * 2
+LOWER_DEFAULT_TARGETS = (-0.1, 0.0, 0.0, 0.3, -0.2, 0.0) * 2
+
+
+@dataclass(kw_only=True)
+class CMoEPositionActuatorCfg(ActuatorCfg):
+  stiffness: tuple[float, ...]
+  damping: tuple[float, ...]
+  effort_limit: tuple[float, ...]
+  default_target: tuple[float, ...]
+  decimation: int
+
+  def build(
+    self, entity: Entity, target_ids: list[int], target_names: list[str]
+  ) -> "CMoEPositionActuator":
+    return CMoEPositionActuator(self, entity, target_ids, target_names)
+
+
+class CMoEPositionActuator(Actuator[CMoEPositionActuatorCfg]):
+  """Apply CMoE's action delay within each four-substep control interval."""
+
+  def __init__(
+    self,
+    cfg: CMoEPositionActuatorCfg,
+    entity: Entity,
+    target_ids: list[int],
+    target_names: list[str],
+  ) -> None:
+    super().__init__(cfg, entity, target_ids, target_names)
+    order = [cfg.target_names_expr.index(name) for name in target_names]
+    self._stiffness = tuple(cfg.stiffness[index] for index in order)
+    self._damping = tuple(cfg.damping[index] for index in order)
+    self._effort_limit = tuple(cfg.effort_limit[index] for index in order)
+    self._default_target = tuple(cfg.default_target[index] for index in order)
+    self._substep = 0
+    self._delay_steps: torch.Tensor | None = None
+    self._previous_target: torch.Tensor | None = None
+    self._current_target: torch.Tensor | None = None
+
+  def edit_spec(self, spec: mujoco.MjSpec, target_names: list[str]) -> None:
+    for name, stiffness, damping, effort_limit in zip(
+      target_names,
+      self._stiffness,
+      self._damping,
+      self._effort_limit,
+      strict=True,
+    ):
+      self._mjs_actuators.append(
+        create_position_actuator(
+          spec,
+          name,
+          stiffness=stiffness,
+          damping=damping,
+          effort_limit=effort_limit,
+          transmission_type=self.cfg.transmission_type,
+        )
+      )
+
+  def initialize(
+    self,
+    mj_model: mujoco.MjModel,
+    model: mjwarp.Model,
+    data: mjwarp.Data,
+    device: str,
+  ) -> None:
+    super().initialize(mj_model, model, data, device)
+    defaults = torch.tensor(self._default_target, device=device)
+    self._delay_steps = torch.zeros(data.nworld, dtype=torch.long, device=device)
+    self._previous_target = defaults.repeat(data.nworld, 1)
+    self._current_target = self._previous_target.clone()
+
+  def compute(self, cmd: ActuatorCmd) -> torch.Tensor:
+    assert self._delay_steps is not None
+    assert self._previous_target is not None
+    assert self._current_target is not None
+    if self._substep == 0:
+      self._current_target.copy_(cmd.position_target)
+      self._delay_steps.random_(0, self.cfg.decimation)
+    use_current = self._substep >= self._delay_steps
+    return torch.where(
+      use_current[:, None], self._current_target, self._previous_target
+    )
+
+  def update(self, dt: float) -> None:
+    del dt
+    self._substep += 1
+    if self._substep == self.cfg.decimation:
+      assert self._previous_target is not None
+      assert self._current_target is not None
+      self._previous_target.copy_(self._current_target)
+      self._substep = 0
+
+  def reset(self, env_ids: torch.Tensor | slice | None = None) -> None:
+    assert self._previous_target is not None
+    assert self._current_target is not None
+    defaults = torch.tensor(self._default_target, device=self._previous_target.device)
+    indices = slice(None) if env_ids is None else env_ids
+    self._previous_target[indices] = defaults
+    self._current_target[indices] = defaults
 
 
 def get_cmoe_g1_spec() -> mujoco.MjSpec:
@@ -70,45 +174,13 @@ def get_cmoe_g1_spec() -> mujoco.MjSpec:
 def get_cmoe_g1_robot_cfg() -> EntityCfg:
   """Return the original CMoE G1: fixed waist/arms and 12 actuated joints."""
   actuators = (
-    BuiltinPositionActuatorCfg(
-      target_names_expr=(".*_hip_pitch_joint", ".*_hip_yaw_joint"),
-      stiffness=100.0,
-      damping=2.0,
-      effort_limit=88.0,
-      delay_min_lag=0,
-      delay_max_lag=3,
-      delay_update_period=4,
-      delay_per_env_phase=False,
-    ),
-    BuiltinPositionActuatorCfg(
-      target_names_expr=(".*_hip_roll_joint",),
-      stiffness=100.0,
-      damping=2.0,
-      effort_limit=139.0,
-      delay_min_lag=0,
-      delay_max_lag=3,
-      delay_update_period=4,
-      delay_per_env_phase=False,
-    ),
-    BuiltinPositionActuatorCfg(
-      target_names_expr=(".*_knee_joint",),
-      stiffness=150.0,
-      damping=4.0,
-      effort_limit=139.0,
-      delay_min_lag=0,
-      delay_max_lag=3,
-      delay_update_period=4,
-      delay_per_env_phase=False,
-    ),
-    BuiltinPositionActuatorCfg(
-      target_names_expr=(".*_ankle_pitch_joint", ".*_ankle_roll_joint"),
-      stiffness=40.0,
-      damping=2.0,
-      effort_limit=50.0,
-      delay_min_lag=0,
-      delay_max_lag=3,
-      delay_update_period=4,
-      delay_per_env_phase=False,
+    CMoEPositionActuatorCfg(
+      target_names_expr=LOWER_BODY_JOINTS,
+      stiffness=LOWER_STIFFNESS,
+      damping=LOWER_DAMPING,
+      effort_limit=LOWER_TORQUE_LIMITS,
+      default_target=LOWER_DEFAULT_TARGETS,
+      decimation=4,
     ),
   )
   return EntityCfg(

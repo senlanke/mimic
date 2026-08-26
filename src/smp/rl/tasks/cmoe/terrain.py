@@ -23,7 +23,6 @@ from mjlab.terrains.terrain_generator import (
 from scipy import interpolate, ndimage
 
 _HORIZONTAL_SCALE = 0.05
-_COLLISION_SCALE = 0.1
 _VERTICAL_SCALE = 0.005
 _DOWNSAMPLED_SCALE = 0.075
 _TERRAIN_SIZE = (10.0, 10.0)
@@ -295,12 +294,10 @@ def _heightfield_output(
   spawn_at_center: bool,
 ) -> TerrainOutput:
   body = spec.body("terrain")
-  collision_stride = round(_COLLISION_SCALE / _HORIZONTAL_SCALE)
-  collision_raw = raw[::collision_stride, ::collision_stride]
-  minimum = int(collision_raw.min())
-  maximum = int(collision_raw.max())
+  minimum = int(raw.min())
+  maximum = int(raw.max())
   elevation_range = max(maximum - minimum, 1)
-  normalized = (collision_raw - minimum) / elevation_range
+  normalized = (raw - minimum) / elevation_range
   name = uuid.uuid4().hex
   field = spec.add_hfield(
     name=f"cmoe_hfield_{name}",
@@ -310,8 +307,8 @@ def _heightfield_output(
       elevation_range * _VERTICAL_SCALE,
       0.05,
     ],
-    nrow=collision_raw.shape[1],
-    ncol=collision_raw.shape[0],
+    nrow=raw.shape[1],
+    ncol=raw.shape[0],
     userdata=normalized.T.astype(np.float32).flatten().tolist(),
   )
   material = spec.add_material(
