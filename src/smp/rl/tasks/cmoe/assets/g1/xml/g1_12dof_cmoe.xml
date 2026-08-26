@@ -1,6 +1,10 @@
 <mujoco model="g1_29dof_with_hand_rev_1_0">
   <compiler angle="radian" meshdir="../meshes/"/>
 
+  <default>
+    <geom group="3"/>
+  </default>
+
   <asset>
     <mesh name="pelvis" content_type="model/stl" file="../meshes/pelvis.STL"/>
     <mesh name="pelvis_contour_link" content_type="model/stl" file="../meshes/pelvis_contour_link.STL"/>
