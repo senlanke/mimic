@@ -530,7 +530,7 @@ def cmoe_feet_at_edge(env, points: torch.Tensor) -> torch.Tensor:
   generator = env.cfg.scene.terrain.terrain_generator
   border = generator.border_width
   grid_x = generator.num_rows * generator.size[0]
-  grid_y = len(generator.sub_terrains) * generator.size[1]
+  grid_y = generator.num_cols * generator.size[1]
   px = ((points[..., 0] + grid_x / 2 + border) / _HORIZONTAL_SCALE).round().long()
   py = ((points[..., 1] + grid_y / 2 + border) / _HORIZONTAL_SCALE).round().long()
   px = px.clamp(0, edge_mask.shape[0] - 1)
@@ -539,12 +539,24 @@ def cmoe_feet_at_edge(env, points: torch.Tensor) -> torch.Tensor:
 
 
 def cmoe_terrain_class(env) -> torch.Tensor:
+  generator = env.cfg.scene.terrain.terrain_generator
+  sub_terrains = list(generator.sub_terrains.values())
+  if len(sub_terrains) == 1 and isinstance(sub_terrains[0], CMoEPlayCourseCfg):
+    classes = torch.tensor(
+      [CMOE_TERRAIN_CLASS[kind] for kind in CMOE_COURSE_KINDS],
+      device=env.device,
+    )
+    course_start = -generator.num_rows * generator.size[0] * 0.5
+    segment_length = generator.size[0] / len(CMOE_COURSE_KINDS)
+    segment = torch.floor(
+      (env.scene["robot"].data.root_link_pos_w[:, 0] - course_start)
+      / segment_length
+    ).long()
+    return classes[segment]
+
   columns = env.scene.terrain.terrain_types
   classes = torch.tensor(
-    [
-      CMOE_TERRAIN_CLASS[cfg.kind]
-      for cfg in env.cfg.scene.terrain.terrain_generator.sub_terrains.values()
-    ],
+    [CMOE_TERRAIN_CLASS[cfg.kind] for cfg in sub_terrains],
     device=env.device,
   )
   return classes[columns]
