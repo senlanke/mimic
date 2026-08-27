@@ -13,6 +13,7 @@ from dataclasses import dataclass, field, replace
 import mujoco
 import numpy as np
 import torch
+from mjlab.terrains.terrain_entity import TerrainEntityCfg
 from mjlab.terrains.terrain_generator import (
   TerrainGeneratorCfg,
   TerrainOutput,
@@ -54,6 +55,17 @@ CMOE_PLAY_COLUMN_KINDS = (
   "discrete",
   "parkour_gap",
   "parkour_gap",
+  "parkour_gap",
+  "parkour_hurdle",
+  "mix",
+  "narrow_stairs",
+)
+CMOE_COURSE_KINDS = (
+  "rough_neg",
+  "rough_pos",
+  "stairs_up",
+  "stairs_down",
+  "discrete",
   "parkour_gap",
   "parkour_hurdle",
   "mix",
@@ -344,6 +356,49 @@ class CMoETerrainCfg(HfTerrainBaseCfg):
     return output
 
 
+@dataclass(kw_only=True)
+class CMoEPlayCourseCfg(HfTerrainBaseCfg):
+  difficulty: float = 0.5
+  horizontal_scale: float = _HORIZONTAL_SCALE
+  vertical_scale: float = _VERTICAL_SCALE
+  slope_threshold: float = 1.5
+  height_fields: list[np.ndarray] = field(default_factory=list, init=False, repr=False)
+
+  def function(
+    self,
+    difficulty: float,
+    spec: mujoco.MjSpec,
+    rng: np.random.Generator,
+  ) -> TerrainOutput:
+    del difficulty
+    difficulty = np.floor(self.difficulty * 10.0) / 10.0
+    raw = np.concatenate(
+      [_make_raw(kind, difficulty, rng) for kind in CMOE_COURSE_KINDS], axis=0
+    )
+    self.height_fields.append(raw)
+    collision_cfg = replace(
+      self,
+      horizontal_scale=_COLLISION_HORIZONTAL_SCALE,
+    )
+    output = _height_field_to_output(
+      heights=raw[::_COLLISION_STRIDE, ::_COLLISION_STRIDE].T,
+      cfg=collision_cfg,
+      spec=spec,
+      rng=rng,
+    )
+    output.instinct_surface_mesh = _height_field_to_hfield_surface_mesh(raw.T, self)
+    output.origin = np.array([0.75, self.size[1] * 0.5, 0.0])
+    return output
+
+
+@dataclass(kw_only=True)
+class CMoEPlayTerrainEntityCfg(TerrainEntityCfg):
+  def __setattr__(self, name: str, value) -> None:
+    super().__setattr__(name, value)
+    if name == "num_envs" and self.terrain_generator is not None:
+      self.terrain_generator.num_cols = value
+
+
 def cmoe_terrain_generator_cfg(play: bool = False) -> TerrainGeneratorCfg:
   column_kinds = CMOE_PLAY_COLUMN_KINDS if play else CMOE_COLUMN_KINDS
   sub_terrains = {
@@ -366,14 +421,44 @@ def cmoe_terrain_generator_cfg(play: bool = False) -> TerrainGeneratorCfg:
   )
 
 
+def cmoe_play_course_terrain_cfg(
+  num_envs: int = 1,
+  difficulty: float = 0.5,
+) -> CMoEPlayTerrainEntityCfg:
+  course = CMoEPlayCourseCfg(
+    proportion=1.0,
+    difficulty=difficulty,
+  )
+  return CMoEPlayTerrainEntityCfg(
+    terrain_type="generator",
+    terrain_generator=TerrainGeneratorCfg(
+      seed=None,
+      curriculum=False,
+      size=(_TERRAIN_SIZE[0] * len(CMOE_COURSE_KINDS), _TERRAIN_SIZE[1]),
+      border_width=25.0,
+      num_rows=1,
+      num_cols=num_envs,
+      color_scheme="none",
+      sub_terrains={"course": course},
+      difficulty_range=(difficulty, difficulty),
+      add_lights=False,
+    ),
+  )
+
+
 def cmoe_height_field(env) -> torch.Tensor:
   if not hasattr(env, "cmoe_terrain_data"):
     generator = env.cfg.scene.terrain.terrain_generator
     columns = [cfg.height_fields for cfg in generator.sub_terrains.values()]
-    patches = np.asarray(columns).transpose(1, 2, 0, 3)
-    terrain = patches.reshape(
-      generator.num_rows * patches.shape[1], len(columns) * patches.shape[3]
-    )
+    if len(columns) == 1 and isinstance(
+      next(iter(generator.sub_terrains.values())), CMoEPlayCourseCfg
+    ):
+      terrain = np.concatenate(columns[0], axis=1)
+    else:
+      patches = np.asarray(columns).transpose(1, 2, 0, 3)
+      terrain = patches.reshape(
+        generator.num_rows * patches.shape[1], len(columns) * patches.shape[3]
+      )
     border = round(generator.border_width / _HORIZONTAL_SCALE)
     terrain = np.pad(terrain, border)
     threshold = 1.5 * _HORIZONTAL_SCALE / _VERTICAL_SCALE
@@ -406,7 +491,7 @@ def cmoe_height_indices(env, points: torch.Tensor) -> tuple[torch.Tensor, torch.
   generator = env.cfg.scene.terrain.terrain_generator
   border = generator.border_width
   grid_x = generator.num_rows * generator.size[0]
-  grid_y = len(generator.sub_terrains) * generator.size[1]
+  grid_y = generator.num_cols * generator.size[1]
   px = ((points[..., 0] + grid_x / 2 + border) / _HORIZONTAL_SCALE).long()
   py = ((points[..., 1] + grid_y / 2 + border) / _HORIZONTAL_SCALE).long()
   height_field = cmoe_height_field(env)

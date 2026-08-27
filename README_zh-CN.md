@@ -213,6 +213,19 @@ uv run scripts/train.py CMoE-G1 --env.scene.num-envs=4096
 该任务保留原始的 12 自由度下肢控制、10 帧本体感知历史、77 点高度扫描、非对称 critic
 观测、地形课程、域随机化与 CMoE PPO 损失，不使用 SMP 先验 checkpoint。
 
+将 `src/smp/rl/tasks/cmoe/__init__.py` 中的 `play_env_cfg` 切换为
+`g1_cmoe_course_env_cfg(difficulty=0.5)` 后，可沿 x 轴依次播放九种 CMoE
+地形，每个环境占用一条独立路线：
+
+```bash
+uv run scripts/play.py CMoE-G1 \
+  --checkpoint-file logs/rsl_rl/g1_cmoe/<run>/model_<iteration>.pt \
+  --num-envs 4
+```
+
+`--num-envs` 同时决定路线行数，统一地形难度由任务注册中的 `difficulty`
+参数设置。
+
 ### 奖励设计：`task × SMP`
 
 每个任务只使用一个**乘法组合**奖励项 `task_smp_product`：

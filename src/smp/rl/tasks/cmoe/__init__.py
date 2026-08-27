@@ -6,15 +6,25 @@
 from mjlab.tasks.registry import register_mjlab_task
 
 from smp.rl.cmoe import CMoERunner
-from smp.rl.tasks.cmoe.cmoe_env_cfg import g1_cmoe_env_cfg
+from smp.rl.tasks.cmoe.cmoe_env_cfg import (
+  g1_cmoe_course_env_cfg,
+  g1_cmoe_env_cfg,
+)
 from smp.rl.tasks.cmoe.cmoe_rl_cfg import g1_cmoe_ppo_runner_cfg
 
 register_mjlab_task(
   task_id="CMoE-G1",
   env_cfg=g1_cmoe_env_cfg(play=False),
-  play_env_cfg=g1_cmoe_env_cfg(play=True),
+  # Original CMoE play terrain.
+  # play_env_cfg=g1_cmoe_env_cfg(play=True),
+  # Sequential course: uncomment this line and comment the line above.
+  play_env_cfg=g1_cmoe_course_env_cfg(difficulty=0.5),
   rl_cfg=g1_cmoe_ppo_runner_cfg(),
   runner_cls=CMoERunner,
 )
 
-__all__ = ["g1_cmoe_env_cfg", "g1_cmoe_ppo_runner_cfg"]
+__all__ = [
+  "g1_cmoe_course_env_cfg",
+  "g1_cmoe_env_cfg",
+  "g1_cmoe_ppo_runner_cfg",
+]

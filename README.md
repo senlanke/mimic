@@ -265,6 +265,19 @@ history, 77-point height scan, asymmetric critic observations, terrain
 curriculum, domain randomization, and CMoE PPO losses. It does not use an SMP
 prior checkpoint.
 
+Switch `play_env_cfg` in `src/smp/rl/tasks/cmoe/__init__.py` to
+`g1_cmoe_course_env_cfg(difficulty=0.5)` to play all nine CMoE terrain types
+sequentially along the x-axis, with one independent course per environment:
+
+```bash
+uv run scripts/play.py CMoE-G1 \
+  --checkpoint-file logs/rsl_rl/g1_cmoe/<run>/model_<iteration>.pt \
+  --num-envs 4
+```
+
+`--num-envs` also sets the number of course lanes. The shared terrain
+difficulty is set by the task registration's `difficulty` argument.
+
 ### Reward design: `task × SMP`
 
 Every task uses a single **multiplicative** reward term, `task_smp_product`:

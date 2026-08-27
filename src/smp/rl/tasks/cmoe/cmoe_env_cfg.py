@@ -38,7 +38,10 @@ from smp.rl.tasks.cmoe.asset import (
   LOWER_VELOCITY_LIMITS,
   get_cmoe_g1_robot_cfg,
 )
-from smp.rl.tasks.cmoe.terrain import cmoe_terrain_generator_cfg
+from smp.rl.tasks.cmoe.terrain import (
+  cmoe_play_course_terrain_cfg,
+  cmoe_terrain_generator_cfg,
+)
 
 HIP_JOINTS = (
   "left_hip_roll_joint",
@@ -456,4 +459,16 @@ def g1_cmoe_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     )
     command.hard_ranges = command.ranges
 
+  return cfg
+
+
+def g1_cmoe_course_env_cfg(
+  num_envs: int = 1,
+  difficulty: float = 0.5,
+) -> ManagerBasedRlEnvCfg:
+  """Build the CMoE play course with one lane per environment."""
+  cfg = g1_cmoe_env_cfg(play=True)
+  cfg.scene.num_envs = num_envs
+  cfg.scene.terrain = cmoe_play_course_terrain_cfg(num_envs, difficulty)
+  cfg.curriculum = {}
   return cfg
