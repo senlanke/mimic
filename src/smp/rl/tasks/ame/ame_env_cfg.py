@@ -42,7 +42,6 @@ EFFORT_LIMITS = (
 
 
 def _spec_fn(spec: mujoco.MjSpec) -> None:
-  spec.memory = 128_000_000
   for geom in spec.geoms:
     if geom.name.endswith("_collision"):
       geom.group = 3
@@ -339,7 +338,6 @@ def g1_ame_env_cfg(
       elevation=-5.0, azimuth=90.0,
     ),
     sim=SimulationCfg(
-      nconmax=140, njmax=3000, contact_sensor_maxmatch=512,
       mujoco=MujocoCfg(timestep=0.005, iterations=10, ls_iterations=20),
     ),
     decimation=4,

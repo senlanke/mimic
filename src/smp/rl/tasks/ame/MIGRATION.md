@@ -6,7 +6,7 @@ Source project: `/home/ksl/HL/AME_Locomotion`.
 
 - Task registration, environment, MDP, assets and terrains are under
   `src/smp/rl/tasks/ame`.
-- The RSL-RL 5 AME model is under `src/smp/rl/ame`.
+- The RSL-RL 5 AME model and PPO are under `src/smp/rl/ame`.
 - The source `FINETUNE` branch is registered separately as
   `AME-G1-Finetune`; the first-stage task is `AME-G1`.
 
@@ -28,6 +28,7 @@ Source project: `/home/ksl/HL/AME_Locomotion`.
 | Play single-stakes terrain and commands | `terrains/play_terrain_cfg.py`, `ame_env_cfg.py` | Direct parameters | Preserved |
 | CNN, MHA and proprio embeddings | `src/smp/rl/ame/actor_critic_encoder.py` | Direct topology copy + RSL-RL 5 interface | Preserved |
 | Direct learned action std | `src/smp/rl/ame/actor_critic_encoder.py` | Direct behavior copy; no std clamp | Preserved |
+| AME PPO construction and shared encoder ownership | `src/smp/rl/ame/algorithm.py` | RSL-RL 5 API translation | Preserved |
 | PPO scalar parameters | `ame_rl_cfg.py` | Direct parameters | Preserved |
 
 ## Explicit engine and API boundaries
@@ -44,9 +45,9 @@ Source project: `/home/ksl/HL/AME_Locomotion`.
 - Isaac's actuator `velocity_limit_sim` has no direct MuJoCo actuator field.
   Effort limits and PD control are preserved; no torque-speed approximation or
   artificial velocity clamp is added.
-- The source combined `ActorCriticEncoder` is expressed as RSL-RL 5 actor and
-  critic models. CNN and MHA modules are shared; proprio embeddings and MLP
-  heads remain separate.
+- `AMEPPO` expresses the source combined `ActorCriticEncoder` as RSL-RL 5 actor
+  and critic models. The actor owns the CNN and MHA modules and the critic
+  directly references them; proprio embeddings and MLP heads remain separate.
 - Source RSL-RL checkpoints use the old combined `model_state_dict` layout and
   are not silently remapped to the RSL-RL 5 actor/critic checkpoint layout.
 - The solver uses SMP/CMoE's MuJoCo settings: 5 ms simulation step, 10 Newton

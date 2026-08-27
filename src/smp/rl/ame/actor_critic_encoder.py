@@ -136,7 +136,7 @@ class AMEModel(nn.Module):
         }
       )
     else:
-      self.cnns = cnns
+      self.__dict__["cnns"] = cnns
 
     self.proprio_embedding = nn.Linear(self.proprio_dim, mha_dim)
     if attach_global:

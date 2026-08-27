@@ -23,6 +23,11 @@ class AMEOnPolicyRunnerCfg(RslRlOnPolicyRunnerCfg):
   check_for_nan: bool = False
 
 
+@dataclass
+class AMEPpoAlgorithmCfg(RslRlPpoAlgorithmCfg):
+  class_name: str = "smp.rl.ame.algorithm:AMEPPO"
+
+
 def g1_ame_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
   actor = AMEModelCfg(
     distribution_cfg={
@@ -34,7 +39,7 @@ def g1_ame_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
   return AMEOnPolicyRunnerCfg(
     actor=actor,
     critic=critic,
-    algorithm=RslRlPpoAlgorithmCfg(
+    algorithm=AMEPpoAlgorithmCfg(
       value_loss_coef=1.0,
       use_clipped_value_loss=True,
       clip_param=0.2,
@@ -47,7 +52,6 @@ def g1_ame_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
       lam=0.95,
       desired_kl=0.01,
       max_grad_norm=1.0,
-      share_cnn_encoders=True,
     ),
     obs_groups={"actor": ("actor",), "critic": ("critic",)},
     experiment_name="g1_ame",
@@ -60,4 +64,4 @@ def g1_ame_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
   )
 
 
-__all__ = ["AMEModelCfg", "g1_ame_ppo_runner_cfg"]
+__all__ = ["AMEModelCfg", "AMEPpoAlgorithmCfg", "g1_ame_ppo_runner_cfg"]
