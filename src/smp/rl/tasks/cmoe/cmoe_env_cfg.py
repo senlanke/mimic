@@ -454,7 +454,7 @@ def g1_cmoe_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     command.ranges = UniformVelocityCommandCfg.Ranges(
       lin_vel_x=(0.8, 0.8),
       lin_vel_y=(0.0, 0.0),
-      ang_vel_z=(0.0, 0.0),
+      ang_vel_z=(-1.0, 1.0),
       heading=(0.0, 0.0),
     )
     command.hard_ranges = command.ranges
