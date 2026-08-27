@@ -226,7 +226,7 @@ uv run scripts/pretrain.py --data-dir datasets/npz/forward/ --num-layers 2 --no-
 
 ## RL
 
-Five downstream tasks are registered with `mjlab.tasks.registry` (importing
+Seven task IDs are registered with `mjlab.tasks.registry` (importing
 `smp.rl.tasks` self-registers them):
 
 | Task              | Demo | Description                              |
@@ -236,6 +236,8 @@ Five downstream tasks are registered with `mjlab.tasks.registry` (importing
 | `Smp-Location-G1` | <img src="https://raw.githubusercontent.com/SUZ-tsinghua/smp/assets/location.gif" width="200"/> | walk to a world-frame xy goal |
 | `Smp-Getup-G1`    | <img src="https://raw.githubusercontent.com/SUZ-tsinghua/smp/assets/getup.gif" width="200"/> | stand up from a fallen pose |
 | `CMoE-G1`         | — | CMoE terrain locomotion with five contrastive experts |
+| `AME-G1`          | — | AME terrain locomotion, stage-one training |
+| `AME-G1-Finetune` | — | AME stage-two terrain finetuning |
 
 ### Train / play
 
@@ -277,6 +279,44 @@ uv run scripts/play.py CMoE-G1 \
 
 `--num-envs` also sets the number of course lanes. The shared terrain
 difficulty is set by the task registration's `difficulty` argument.
+
+AME uses two training stages. Train the first stage with:
+
+```bash
+uv run scripts/train.py AME-G1 --env.scene.num-envs=4096
+```
+
+To train on a specific GPU, pass its index as a list with `--gpu-ids`:
+
+```bash
+uv run scripts/train.py AME-G1 --env.scene.num-envs=4096 --gpu-ids '[2]'
+```
+
+Multiple GPUs can be selected with `--gpu-ids '[0,1]'`, or all visible GPUs with
+`--gpu-ids all`.
+
+Then initialize the finetuning task from the latest first-stage run and its
+latest checkpoint:
+
+```bash
+uv run scripts/train.py AME-G1-Finetune \
+  --env.scene.num-envs=4096 \
+  --agent.resume \
+  --agent.load-run='.*_ame$' \
+  --agent.load-checkpoint='model_.*\.pt'
+```
+
+Play either stage with its corresponding task ID:
+
+```bash
+uv run scripts/play.py AME-G1 \
+  --checkpoint-file logs/rsl_rl/g1_ame/<run>/model_<iteration>.pt \
+  --num-envs 4
+
+uv run scripts/play.py AME-G1-Finetune \
+  --checkpoint-file logs/rsl_rl/g1_ame/<run>/model_<iteration>.pt \
+  --num-envs 4
+```
 
 ### Reward design: `task × SMP`
 

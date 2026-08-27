@@ -177,7 +177,7 @@ uv run scripts/pretrain.py --data-dir datasets/npz/forward/ --num-layers 2 --no-
 
 ## 强化学习
 
-项目通过 `mjlab.tasks.registry` 注册五个下游任务。导入 `smp.rl.tasks` 时会自动完成注册。
+项目通过 `mjlab.tasks.registry` 注册七个任务入口。导入 `smp.rl.tasks` 时会自动完成注册。
 
 | Task | 演示 | 说明 |
 |---|:---:|---|
@@ -186,6 +186,8 @@ uv run scripts/pretrain.py --data-dir datasets/npz/forward/ --num-layers 2 --no-
 | `Smp-Location-G1` | <img src="https://raw.githubusercontent.com/SUZ-tsinghua/smp/assets/location.gif" width="200"/> | 移动到世界坐标系中的 xy 目标位置 |
 | `Smp-Getup-G1` | <img src="https://raw.githubusercontent.com/SUZ-tsinghua/smp/assets/getup.gif" width="200"/> | 从倒地姿态恢复站立 |
 | `CMoE-G1` | — | 使用五个对比专家完成复杂地形运动 |
+| `AME-G1` | — | AME 第一阶段地形运动训练 |
+| `AME-G1-Finetune` | — | AME 第二阶段地形微调 |
 
 ### 训练与播放
 
@@ -225,6 +227,42 @@ uv run scripts/play.py CMoE-G1 \
 
 `--num-envs` 同时决定路线行数，统一地形难度由任务注册中的 `difficulty`
 参数设置。
+
+AME 分为两个训练阶段。首先训练第一阶段：
+
+```bash
+uv run scripts/train.py AME-G1 --env.scene.num-envs=4096
+```
+
+指定 GPU 时使用 `--gpu-ids`，并以列表形式传入 GPU 编号：
+
+```bash
+uv run scripts/train.py AME-G1 --env.scene.num-envs=4096 --gpu-ids '[2]'
+```
+
+多卡可写为 `--gpu-ids '[0,1]'`，使用全部可见 GPU 则写为 `--gpu-ids all`。
+
+然后从最新的第一阶段运行及其最新 checkpoint 初始化第二阶段微调：
+
+```bash
+uv run scripts/train.py AME-G1-Finetune \
+  --env.scene.num-envs=4096 \
+  --agent.resume \
+  --agent.load-run='.*_ame$' \
+  --agent.load-checkpoint='model_.*\.pt'
+```
+
+使用对应的任务 ID 播放两个阶段的策略：
+
+```bash
+uv run scripts/play.py AME-G1 \
+  --checkpoint-file logs/rsl_rl/g1_ame/<run>/model_<iteration>.pt \
+  --num-envs 4
+
+uv run scripts/play.py AME-G1-Finetune \
+  --checkpoint-file logs/rsl_rl/g1_ame/<run>/model_<iteration>.pt \
+  --num-envs 4
+```
 
 ### 奖励设计：`task × SMP`
 
