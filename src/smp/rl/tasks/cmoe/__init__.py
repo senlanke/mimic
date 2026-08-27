@@ -16,9 +16,9 @@ register_mjlab_task(
   task_id="CMoE-G1",
   env_cfg=g1_cmoe_env_cfg(play=False),
   # Original CMoE play terrain.
-  # play_env_cfg=g1_cmoe_env_cfg(play=True),
+  play_env_cfg=g1_cmoe_env_cfg(play=True),
   # Sequential course: uncomment this line and comment the line above.
-  play_env_cfg=g1_cmoe_course_env_cfg(difficulty=0.5),
+  # play_env_cfg=g1_cmoe_course_env_cfg(difficulty=0.5),
   rl_cfg=g1_cmoe_ppo_runner_cfg(),
   runner_cls=CMoERunner,
 )
