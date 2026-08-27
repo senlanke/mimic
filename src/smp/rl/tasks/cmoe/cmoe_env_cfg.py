@@ -471,4 +471,5 @@ def g1_cmoe_course_env_cfg(
   cfg.scene.num_envs = num_envs
   cfg.scene.terrain = cmoe_play_course_terrain_cfg(num_envs, difficulty)
   cfg.curriculum = {}
+  cfg.terminations.pop("time_out")
   return cfg
