@@ -1,4 +1,4 @@
-"""Unitree G1 29DoF configuration used by AME_Locomotion."""
+"""Unitree G1 configuration used by AME."""
 
 from __future__ import annotations
 
@@ -104,7 +104,7 @@ AME_G1_ARTICULATION = EntityArticulationInfoCfg(
   soft_joint_pos_limit_factor=0.9,
 )
 
-UNITREE_G1_29DOF_CFG = EntityCfg(
+UNITREE_G1_CFG = EntityCfg(
   init_state=AME_G1_INITIAL_STATE,
   collisions=(FULL_COLLISION,),
   spec_fn=get_spec,
@@ -112,13 +112,13 @@ UNITREE_G1_29DOF_CFG = EntityCfg(
 )
 
 
-def get_unitree_g1_29dof_cfg() -> EntityCfg:
-  return copy.deepcopy(UNITREE_G1_29DOF_CFG)
+def get_unitree_g1_cfg() -> EntityCfg:
+  return copy.deepcopy(UNITREE_G1_CFG)
 
 
 __all__ = [
   "AME_G1_INITIAL_STATE",
   "G1_JOINT_SDK_NAMES",
-  "UNITREE_G1_29DOF_CFG",
-  "get_unitree_g1_29dof_cfg",
+  "UNITREE_G1_CFG",
+  "get_unitree_g1_cfg",
 ]

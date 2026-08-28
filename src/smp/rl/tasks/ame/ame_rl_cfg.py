@@ -25,17 +25,20 @@ class AMEOnPolicyRunnerCfg(RslRlOnPolicyRunnerCfg):
 
 @dataclass
 class AMEPpoAlgorithmCfg(RslRlPpoAlgorithmCfg):
-  class_name: str = "smp.rl.ame.algorithm:AMEPPO"
+  class_name: str = "smp.rl.ame.ppo:AMEPPO"
 
 
-def g1_ame_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
+def g1_ame_ppo_runner_cfg(
+  attach_global: bool = False,
+) -> RslRlOnPolicyRunnerCfg:
   actor = AMEModelCfg(
+    attach_global=attach_global,
     distribution_cfg={
       "class_name": "smp.rl.ame.actor_critic_encoder:AMEDirectGaussianDistribution",
       "init_std": 1.0,
     }
   )
-  critic = AMEModelCfg(distribution_cfg=None)
+  critic = AMEModelCfg(attach_global=attach_global, distribution_cfg=None)
   return AMEOnPolicyRunnerCfg(
     actor=actor,
     critic=critic,
@@ -60,7 +63,7 @@ def g1_ame_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
     upload_model=False,
     save_interval=100,
     num_steps_per_env=24,
-    max_iterations=10_000,
+    max_iterations=15_000,
   )
 
 

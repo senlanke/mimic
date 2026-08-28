@@ -160,6 +160,7 @@ def double_column_stakes_terrain(difficulty: float, cfg, rng: np.random.Generato
   half_lower = stake_side_px // 2
   half_upper = stake_side_px - half_lower
   center_offset_px = stake_side_px + column_gap_px
+  center_x = width_pixels // 2
   center_y = length_pixels // 2
   stake_height_values = np.arange(-stake_height_max_px, stake_height_max_px + 1) if stake_height_max_px > 0 else np.array([0])
 
@@ -171,18 +172,26 @@ def double_column_stakes_terrain(difficulty: float, cfg, rng: np.random.Generato
       max(0, cy - half_lower) : min(length_pixels, cy + half_upper),
     ] = value
 
-  def place_column_pair(primary_pos: int) -> None:
+  def place_column_pair(primary_pos: int, along_x: bool) -> None:
     base_offset = max(center_offset_px // 2, half_lower)
     for sign in (-1, 1):
       jitter = rng.integers(-column_jitter_px, column_jitter_px + 1) if column_jitter_px > 0 else 0
-      cy = int(np.clip(center_y + sign * base_offset + jitter, half_lower, length_pixels - half_upper))
-      paint_square(primary_pos, cy, int(rng.choice(stake_height_values)))
+      if along_x:
+        cy = int(np.clip(center_y + sign * base_offset + jitter, half_lower, length_pixels - half_upper))
+        paint_square(primary_pos, cy, int(rng.choice(stake_height_values)))
+      else:
+        cx = int(np.clip(center_x + sign * base_offset + jitter, half_lower, width_pixels - half_upper))
+        paint_square(cx, primary_pos, int(rng.choice(stake_height_values)))
 
-  start = 0
-  step = stake_gap_px + stake_side_px
-  while start < width_pixels:
-    place_column_pair(start)
-    start += step
+  def extend_from_edge(along_x: bool) -> None:
+    start = 0
+    step = stake_gap_px + stake_side_px
+    while 0 <= start < width_pixels:
+      place_column_pair(int(start), along_x)
+      start += step
+
+  extend_from_edge(along_x=True)
+  extend_from_edge(along_x=False)
 
   x1 = (width_pixels - platform_width_px) // 2
   x2 = (width_pixels + platform_width_px) // 2

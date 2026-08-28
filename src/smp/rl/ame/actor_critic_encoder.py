@@ -96,6 +96,8 @@ class AMEModel(nn.Module):
     cnn_downsample: bool = True,
     attach_global: bool = False,
     cnns: nn.ModuleDict | None = None,
+    global_encoder: nn.Module | None = None,
+    query_projector: nn.Module | None = None,
   ) -> None:
     super().__init__()
     self.obs_groups = obs_groups[obs_set]
@@ -140,8 +142,12 @@ class AMEModel(nn.Module):
 
     self.proprio_embedding = nn.Linear(self.proprio_dim, mha_dim)
     if attach_global:
-      self.global_encoder = MLP(mha_dim, mha_dim, (256, 128), "elu")
-      self.query_projector = nn.Linear(mha_dim * 2, mha_dim)
+      if global_encoder is None:
+        self.global_encoder = MLP(mha_dim, mha_dim, (256, 128), "elu")
+        self.query_projector = nn.Linear(mha_dim * 2, mha_dim)
+      else:
+        self.__dict__["global_encoder"] = global_encoder
+        self.__dict__["query_projector"] = query_projector
     else:
       self.global_encoder = None
       self.query_projector = None
@@ -169,7 +175,9 @@ class AMEModel(nn.Module):
       torch.cat([obs[name] for name in self.obs_groups], dim=-1)
     )
 
-  def _encode(self, observation: torch.Tensor) -> torch.Tensor:
+  def _encode(
+    self, observation: torch.Tensor
+  ) -> tuple[torch.Tensor, torch.Tensor]:
     length, width, coord_dim = self.map_scan_dim
     map_scan = observation[:, -self.map_scan_size :].reshape(
       -1, width, length, coord_dim
@@ -185,13 +193,13 @@ class AMEModel(nn.Module):
       global_feature = self.global_encoder(local_features).amax(dim=1)
       query = self.query_projector(torch.cat((global_feature, query), dim=-1))
 
-    attended, _ = self.cnns["mha"](
+    attended, attention_weights = self.cnns["mha"](
       query=query.unsqueeze(1), key=local_features, value=local_features
     )
     encoded = torch.cat((attended.squeeze(1), proprio), dim=-1)
     if global_feature is not None:
       encoded = torch.cat((global_feature, encoded), dim=-1)
-    return encoded
+    return encoded, attention_weights
 
   def get_latent(
     self,
@@ -200,7 +208,19 @@ class AMEModel(nn.Module):
     hidden_state: HiddenState = None,
   ) -> torch.Tensor:
     del masks, hidden_state
-    return self._encode(self._observation_tensor(obs))
+    encoded, attention_weights = self._encode(self._observation_tensor(obs))
+    del attention_weights
+    return encoded
+
+  def forward_with_attention(
+    self,
+    obs: TensorDictBase,
+  ) -> tuple[torch.Tensor, torch.Tensor]:
+    encoded, attention_weights = self._encode(self._observation_tensor(obs))
+    output = self.mlp(encoded)
+    if self.distribution is not None:
+      output = self.distribution.deterministic_output(output)
+    return output, attention_weights
 
   def forward(
     self,

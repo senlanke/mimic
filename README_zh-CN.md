@@ -187,6 +187,7 @@ uv run scripts/pretrain.py --data-dir datasets/npz/forward/ --num-layers 2 --no-
 | `Smp-Getup-G1` | <img src="https://raw.githubusercontent.com/SUZ-tsinghua/smp/assets/getup.gif" width="200"/> | 从倒地姿态恢复站立 |
 | `CMoE-G1` | — | 使用五个对比专家完成复杂地形运动 |
 | `AME-G1` | — | AME 第一阶段地形运动训练 |
+| `AME-G1-Global` | — | 使用全局上下文编码器的 AME 第一阶段训练 |
 | `AME-G1-Finetune` | — | AME 第二阶段地形微调 |
 
 ### 训练与播放
@@ -263,6 +264,32 @@ uv run scripts/play.py AME-G1 \
 uv run scripts/play.py AME-G1-Finetune \
   --checkpoint-file logs/rsl_rl/g1_ame/<run>/model_<iteration>.pt \
   --num-envs 4
+```
+
+原 AME 项目的第一阶段 checkpoint 保持相同存储结构，可以直接播放：
+
+```bash
+uv run scripts/play.py AME-G1 \
+  --checkpoint-file /path/to/AME_Locomotion/pretrained/ame1.pt \
+  --num-envs 1
+
+uv run scripts/play.py AME-G1-Global \
+  --checkpoint-file /path/to/AME_Locomotion/pretrained/ame2.pt \
+  --num-envs 1
+```
+
+保存并绘制策略的 MHA attention weights：
+
+```bash
+uv run scripts/play.py AME-G1 \
+  --checkpoint-file logs/rsl_rl/g1_ame/<run>/model_<iteration>.pt \
+  --num-envs 1 \
+  --num-steps 300 \
+  --attention-file attention_weights.npy
+
+uv run python -m smp.rl.ame.plot_attention \
+  --attention-file attention_weights.npy \
+  --output-dir attn_vis
 ```
 
 ### 奖励设计：`task × SMP`

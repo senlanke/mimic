@@ -8,13 +8,14 @@ Source project: `/home/ksl/HL/AME_Locomotion`.
   `src/smp/rl/tasks/ame`.
 - The RSL-RL 5 AME model and PPO are under `src/smp/rl/ame`.
 - The source `FINETUNE` branch is registered separately as
-  `AME-G1-Finetune`; the first-stage task is `AME-G1`.
+  `AME-G1-Finetune`; the first-stage task is `AME-G1`. The released
+  `attach_global=True` model is registered as `AME-G1-Global`.
 
 ## Migration table
 
 | Source item | SMP location | Migration method | Status |
 |---|---|---|---|
-| 29DoF joint order and default pose | `assets/robots/unitree.py` | API translation onto MJLab G1 MJCF | Preserved |
+| G1 joint order and default pose | `assets/robots/unitree.py` | API translation onto MJLab G1 MJCF | Preserved |
 | PD gains, effort limits and armature | `assets/robots/unitree.py` | API translation | Preserved |
 | Actor/critic observation order | `ame_env_cfg.py` | API translation | Preserved |
 | 33x21x3 elevation map and noise | `mdp/observations.py` | API translation | Preserved |
@@ -28,7 +29,9 @@ Source project: `/home/ksl/HL/AME_Locomotion`.
 | Stage-matched play terrains and fixed play commands | `ame_env_cfg.py` | SMP task separation | Adjusted |
 | CNN, MHA and proprio embeddings | `src/smp/rl/ame/actor_critic_encoder.py` | Direct topology copy + RSL-RL 5 interface | Preserved |
 | Direct learned action std | `src/smp/rl/ame/actor_critic_encoder.py` | Direct behavior copy; no std clamp | Preserved |
-| AME PPO construction and shared encoder ownership | `src/smp/rl/ame/algorithm.py` | RSL-RL 5 API translation | Preserved |
+| AME PPO update loop and shared encoder ownership | `src/smp/rl/ame/ppo.py` | Direct logic copy + RSL-RL 5 API translation | Preserved |
+| Original `model_state_dict` checkpoint layout | `src/smp/rl/ame/runner.py`, `ppo.py` | Direct layout preservation | Preserved |
+| MHA attention recording and plotting | `src/smp/rl/ame/play.py`, `plot_attention.py` | Direct feature migration | Preserved |
 | PPO scalar parameters | `ame_rl_cfg.py` | Direct parameters | Preserved |
 
 ## Explicit engine and API boundaries
@@ -46,12 +49,18 @@ Source project: `/home/ksl/HL/AME_Locomotion`.
   Effort limits and PD control are preserved; no torque-speed approximation or
   artificial velocity clamp is added.
 - `AMEPPO` expresses the source combined `ActorCriticEncoder` as RSL-RL 5 actor
-  and critic models. The actor owns the CNN and MHA modules and the critic
-  directly references them; proprio embeddings and MLP heads remain separate.
+  and critic models. The actor owns CNN, MHA, global encoder and query projector
+  modules and the critic directly references them; proprio embeddings and MLP
+  heads remain separate.
+- `AMEPPO` owns the source PPO update loop. Actor, critic and shared encoder
+  parameters form one optimizer parameter set and receive one global gradient
+  clipping operation per mini-batch.
 - Each task's play configuration retains its own training terrain generator:
   `AME-G1` uses stage-one terrains and `AME-G1-Finetune` uses stage-two terrains.
-- Source RSL-RL checkpoints use the old combined `model_state_dict` layout and
-  are not silently remapped to the RSL-RL 5 actor/critic checkpoint layout.
+- AME keeps the source combined `model_state_dict` layout as its only checkpoint
+  format. The supplied `pretrained/ame1.pt` therefore loads directly through
+  `AMERunner`; `ame2.pt` uses the explicit `AME-G1-Global` task. No
+  actor/critic-format compatibility path is retained.
 - The solver uses SMP/CMoE's MuJoCo settings: 5 ms simulation step, 10 Newton
   iterations and 20 line-search iterations.
 

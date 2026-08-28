@@ -1,4 +1,4 @@
-"""Unitree G1 29DoF AME terrain-locomotion task."""
+"""Unitree G1 AME terrain task."""
 
 from __future__ import annotations
 
@@ -25,21 +25,12 @@ from mjlab.utils.noise import UniformNoiseCfg as Unoise
 from mjlab.viewer import ViewerConfig
 
 from smp.rl.tasks.ame import mdp
-from smp.rl.tasks.ame.assets.robots.unitree import get_unitree_g1_29dof_cfg
+from smp.rl.tasks.ame.assets.robots.unitree import get_unitree_g1_cfg
 from smp.rl.tasks.ame.terrains.finetune_terrain_cfg import FINETUNE_ROUGH_TERRAINS_CFG
 from smp.rl.tasks.ame.terrains.terrain_cfg import ROUGH_TERRAINS_CFG
 
 FOOT_BODIES = ("left_ankle_roll_link", "right_ankle_roll_link")
 COLLISION_GEOMS = (".*_collision",)
-EFFORT_LIMITS = (
-  88.0, 139.0, 88.0, 139.0, 25.0, 25.0,
-  88.0, 139.0, 88.0, 139.0, 25.0, 25.0,
-  88.0, 25.0, 25.0,
-  25.0, 25.0, 25.0, 25.0, 25.0, 5.0, 5.0,
-  25.0, 25.0, 25.0, 25.0, 25.0, 5.0, 5.0,
-)
-
-
 def _spec_fn(spec: mujoco.MjSpec) -> None:
   for geom in spec.geoms:
     if geom.name.endswith("_collision"):
@@ -252,7 +243,7 @@ def g1_ame_env_cfg(
     "dof_pos_limits": RewardTermCfg(func=envs_mdp.joint_pos_limits, weight=-1.0),
     "dof_torques_limits": RewardTermCfg(
       func=mdp.applied_torque_limits, weight=-0.01,
-      params={"limits": EFFORT_LIMITS},
+      params={"asset_cfg": SceneEntityCfg("robot")},
     ),
     "action_rate_l2": RewardTermCfg(func=envs_mdp.action_rate_l2, weight=-0.01),
     "flat_orientation_l2": RewardTermCfg(func=envs_mdp.flat_orientation_l2, weight=-2.0),
@@ -311,7 +302,7 @@ def g1_ame_env_cfg(
         terrain_generator=FINETUNE_ROUGH_TERRAINS_CFG if finetune else ROUGH_TERRAINS_CFG,
         max_init_terrain_level=5,
       ),
-      entities={"robot": get_unitree_g1_29dof_cfg()},
+      entities={"robot": get_unitree_g1_cfg()},
       sensors=(terrain_scan, feet_contact, undesired_contact, illegal_contact),
       num_envs=4096,
       extent=2.5,

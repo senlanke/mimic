@@ -237,6 +237,7 @@ Seven task IDs are registered with `mjlab.tasks.registry` (importing
 | `Smp-Getup-G1`    | <img src="https://raw.githubusercontent.com/SUZ-tsinghua/smp/assets/getup.gif" width="200"/> | stand up from a fallen pose |
 | `CMoE-G1`         | — | CMoE terrain locomotion with five contrastive experts |
 | `AME-G1`          | — | AME terrain locomotion, stage-one training |
+| `AME-G1-Global`   | — | AME stage one with the global-context encoder |
 | `AME-G1-Finetune` | — | AME stage-two terrain finetuning |
 
 ### Train / play
@@ -317,6 +318,33 @@ uv run scripts/play.py AME-G1 \
 uv run scripts/play.py AME-G1-Finetune \
   --checkpoint-file logs/rsl_rl/g1_ame/<run>/model_<iteration>.pt \
   --num-envs 4
+```
+
+The original AME stage-one checkpoint uses the same checkpoint layout and can
+be played directly:
+
+```bash
+uv run scripts/play.py AME-G1 \
+  --checkpoint-file /path/to/AME_Locomotion/pretrained/ame1.pt \
+  --num-envs 1
+
+uv run scripts/play.py AME-G1-Global \
+  --checkpoint-file /path/to/AME_Locomotion/pretrained/ame2.pt \
+  --num-envs 1
+```
+
+Record and render the policy's MHA attention weights with:
+
+```bash
+uv run scripts/play.py AME-G1 \
+  --checkpoint-file logs/rsl_rl/g1_ame/<run>/model_<iteration>.pt \
+  --num-envs 1 \
+  --num-steps 300 \
+  --attention-file attention_weights.npy
+
+uv run python -m smp.rl.ame.plot_attention \
+  --attention-file attention_weights.npy \
+  --output-dir attn_vis
 ```
 
 ### Reward design: `task × SMP`
