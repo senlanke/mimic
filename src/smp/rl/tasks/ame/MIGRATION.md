@@ -25,7 +25,7 @@ Source project: `/home/ksl/HL/AME_Locomotion`.
 | Stage-two terrain composition | `terrains/finetune_terrain_cfg.py` | Direct parameters + engine translation | Preserved |
 | gaps/stakes/stonebridge/stepping-stones formulas | `terrains/loco_hf_terrains.py` | Direct formula copy | Preserved |
 | rails formula | `terrains/rails_terrain_cfg.py` | Direct formula copy using MuJoCo boxes | Preserved |
-| Play single-stakes terrain and commands | `terrains/play_terrain_cfg.py`, `ame_env_cfg.py` | Direct parameters | Preserved |
+| Stage-matched play terrains and fixed play commands | `ame_env_cfg.py` | SMP task separation | Adjusted |
 | CNN, MHA and proprio embeddings | `src/smp/rl/ame/actor_critic_encoder.py` | Direct topology copy + RSL-RL 5 interface | Preserved |
 | Direct learned action std | `src/smp/rl/ame/actor_critic_encoder.py` | Direct behavior copy; no std clamp | Preserved |
 | AME PPO construction and shared encoder ownership | `src/smp/rl/ame/algorithm.py` | RSL-RL 5 API translation | Preserved |
@@ -48,6 +48,8 @@ Source project: `/home/ksl/HL/AME_Locomotion`.
 - `AMEPPO` expresses the source combined `ActorCriticEncoder` as RSL-RL 5 actor
   and critic models. The actor owns the CNN and MHA modules and the critic
   directly references them; proprio embeddings and MLP heads remain separate.
+- Each task's play configuration retains its own training terrain generator:
+  `AME-G1` uses stage-one terrains and `AME-G1-Finetune` uses stage-two terrains.
 - Source RSL-RL checkpoints use the old combined `model_state_dict` layout and
   are not silently remapped to the RSL-RL 5 actor/critic checkpoint layout.
 - The solver uses SMP/CMoE's MuJoCo settings: 5 ms simulation step, 10 Newton

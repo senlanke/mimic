@@ -306,7 +306,8 @@ uv run scripts/train.py AME-G1-Finetune \
   --agent.load-checkpoint='model_.*\.pt'
 ```
 
-Play either stage with its corresponding task ID:
+Play either stage with its corresponding task ID. `AME-G1` uses the stage-one
+training terrains, while `AME-G1-Finetune` uses the stage-two training terrains:
 
 ```bash
 uv run scripts/play.py AME-G1 \

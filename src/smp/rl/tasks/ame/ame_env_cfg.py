@@ -27,7 +27,6 @@ from mjlab.viewer import ViewerConfig
 from smp.rl.tasks.ame import mdp
 from smp.rl.tasks.ame.assets.robots.unitree import get_unitree_g1_29dof_cfg
 from smp.rl.tasks.ame.terrains.finetune_terrain_cfg import FINETUNE_ROUGH_TERRAINS_CFG
-from smp.rl.tasks.ame.terrains.play_terrain_cfg import PLAY_TERRAIN_CFG
 from smp.rl.tasks.ame.terrains.terrain_cfg import ROUGH_TERRAINS_CFG
 
 FOOT_BODIES = ("left_ankle_roll_link", "right_ankle_roll_link")
@@ -371,7 +370,6 @@ def g1_ame_env_cfg(
     cfg.events.pop("base_external_force_torque")
     if finetune:
       cfg.events.pop("push_robot")
-    cfg.scene.terrain.terrain_generator = PLAY_TERRAIN_CFG
     cfg.scene.terrain.max_init_terrain_level = None
     cfg.events["reset_base"].params["pose_range"] = {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)}
     cfg.observations["actor"].enable_corruption = False

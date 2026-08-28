@@ -252,7 +252,8 @@ uv run scripts/train.py AME-G1-Finetune \
   --agent.load-checkpoint='model_.*\.pt'
 ```
 
-使用对应的任务 ID 播放两个阶段的策略：
+使用对应的任务 ID 播放两个阶段的策略。`AME-G1` 使用第一阶段训练地形，
+`AME-G1-Finetune` 使用第二阶段训练地形：
 
 ```bash
 uv run scripts/play.py AME-G1 \
