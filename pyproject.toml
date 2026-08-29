@@ -21,10 +21,16 @@ dependencies = [
 [dependency-groups]
 dev = [
   "ruff>=0.14.14",
+  "setuptools>=82.0.1",
+  "tensorboard>=2.20.0",
 ]
 
 [tool.uv.sources]
 mjlab = { git = "https://github.com/mujocolab/mjlab.git", rev = "731fa27" }
+
+[[tool.uv.index]]
+url = "https://mirror.sjtu.edu.cn/pypi/web/simple"
+default = true
 
 [tool.pyright]
 pythonVersion = "3.13"
