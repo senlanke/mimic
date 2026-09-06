@@ -95,30 +95,34 @@ class joint_coordination_rel:
     return result / len(coord_joints)
 
 
-class applied_torque_limits:
-  def __init__(self, cfg: RewardTermCfg, env: "ManagerBasedRlEnv"):
-    asset: Entity = env.scene[cfg.params["asset_cfg"].name]
-    self.stiffness = torch.empty(asset.num_joints, device=env.device)
-    self.damping = torch.empty(asset.num_joints, device=env.device)
-    self.effort_limit = torch.empty(asset.num_joints, device=env.device)
-    for actuator in asset.actuators:
-      self.stiffness[actuator.target_ids] = actuator.cfg.stiffness
-      self.damping[actuator.target_ids] = actuator.cfg.damping
-      self.effort_limit[actuator.target_ids] = actuator.cfg.effort_limit
+def applied_torque_limits(
+  env: "ManagerBasedRlEnv", asset_cfg: SceneEntityCfg
+) -> torch.Tensor:
+  asset: Entity = env.scene[asset_cfg.name]
+  return sum(
+    torch.abs(actuator.applied_effort - actuator.computed_effort).sum(dim=1)
+    for actuator in asset.actuators
+  )
 
-  def __call__(
-    self, env: "ManagerBasedRlEnv", asset_cfg: SceneEntityCfg
-  ) -> torch.Tensor:
-    asset: Entity = env.scene[asset_cfg.name]
-    ids = asset_cfg.joint_ids
-    computed_torque = self.stiffness[ids] * (
-      asset.data.joint_pos_target[:, asset_cfg.joint_ids]
-      - asset.data.joint_pos[:, asset_cfg.joint_ids]
-    ) + self.damping[ids] * (
-      asset.data.joint_vel_target[:, ids] - asset.data.joint_vel[:, ids]
-    ) + asset.data.joint_effort_target[:, ids]
-    applied_torque = computed_torque.clamp(-self.effort_limit[ids], self.effort_limit[ids])
-    return torch.abs(applied_torque - computed_torque).sum(dim=1)
+
+def joint_torques_l2(
+  env: "ManagerBasedRlEnv", asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+  asset: Entity = env.scene[asset_cfg.name]
+  return sum(
+    torch.square(actuator.applied_effort).sum(dim=1)
+    for actuator in asset.actuators
+  )
+
+
+def joint_acc_l2(
+  env: "ManagerBasedRlEnv", asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+  asset: Entity = env.scene[asset_cfg.name]
+  return sum(
+    torch.square(actuator.joint_acc).sum(dim=1)
+    for actuator in asset.actuators
+  )
 
 
 def undesired_contacts(
@@ -136,7 +140,7 @@ def track_lin_vel_xy_yaw_frame_exp(
   asset: Entity = env.scene[asset_cfg.name]
   command = env.command_manager.get_command(command_name)
   velocity = quat_apply_inverse(
-    yaw_quat(asset.data.root_link_quat_w), asset.data.root_link_lin_vel_w
+    yaw_quat(asset.data.root_link_quat_w), asset.data.root_com_lin_vel_w
   )
   error = torch.square(command[:, :2] - velocity[:, :2]).sum(dim=1)
   return torch.exp(-error / std**2)
@@ -165,7 +169,7 @@ def feet_slide(
   asset: Entity = env.scene[asset_cfg.name]
   sensor: ContactSensor = env.scene[sensor_name]
   velocity = torch.linalg.norm(
-    asset.data.body_link_lin_vel_w[:, asset_cfg.body_ids, :2], dim=-1
+    asset.data.body_com_lin_vel_w[:, asset_cfg.body_ids, :2], dim=-1
   )
   contacts = torch.linalg.norm(sensor.data.force_history, dim=-1).max(dim=2)[0] > 1.0
   return (velocity * contacts).sum(dim=1)
@@ -189,6 +193,8 @@ __all__ = [
   "joint_coordination_rel",
   "illegal_contact",
   "joint_deviation_l1",
+  "joint_torques_l2",
+  "joint_acc_l2",
   "ang_vel_xy_l2",
   "feet_slide",
   "track_ang_vel_z_world_exp",

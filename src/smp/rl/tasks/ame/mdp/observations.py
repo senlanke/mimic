@@ -7,11 +7,18 @@ from typing import TYPE_CHECKING
 
 import torch
 from mjlab.managers.observation_manager import ObservationTermCfg
+from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.sensor import GridPatternCfg, RayCastSensor
 from mjlab.utils.lab_api.math import quat_apply_inverse, yaw_quat
 
 if TYPE_CHECKING:
   from mjlab.envs import ManagerBasedRlEnv
+
+
+def base_lin_vel(
+  env: "ManagerBasedRlEnv", asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+  return env.scene[asset_cfg.name].data.root_com_lin_vel_b
 
 
 @dataclass
@@ -50,4 +57,4 @@ class elevation_map:
     return local.reshape(num_envs, num_rays * 3)
 
 
-__all__ = ["ElevationGridPatternCfg", "elevation_map"]
+__all__ = ["ElevationGridPatternCfg", "base_lin_vel", "elevation_map"]

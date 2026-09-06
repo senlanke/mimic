@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import copy
 
-from mjlab.actuator import BuiltinPositionActuatorCfg
 from mjlab.asset_zoo.robots.unitree_g1.g1_constants import FULL_COLLISION, get_spec
 from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
+
+from .actuators import AMEPositionActuatorCfg
 
 
 G1_JOINT_SDK_NAMES = (
@@ -42,35 +43,35 @@ AME_G1_INITIAL_STATE = EntityCfg.InitialStateCfg(
 
 AME_G1_ARTICULATION = EntityArticulationInfoCfg(
   actuators=(
-    BuiltinPositionActuatorCfg(
+    AMEPositionActuatorCfg(
       target_names_expr=(".*_hip_pitch_joint", ".*_hip_yaw_joint"),
       stiffness=100.0,
       damping=2.0,
       effort_limit=88.0,
       armature=0.01,
     ),
-    BuiltinPositionActuatorCfg(
+    AMEPositionActuatorCfg(
       target_names_expr=("waist_yaw_joint",),
       stiffness=200.0,
       damping=5.0,
       effort_limit=88.0,
       armature=0.01,
     ),
-    BuiltinPositionActuatorCfg(
+    AMEPositionActuatorCfg(
       target_names_expr=(".*_hip_roll_joint",),
       stiffness=100.0,
       damping=2.0,
       effort_limit=139.0,
       armature=0.01,
     ),
-    BuiltinPositionActuatorCfg(
+    AMEPositionActuatorCfg(
       target_names_expr=(".*_knee_joint",),
       stiffness=150.0,
       damping=4.0,
       effort_limit=139.0,
       armature=0.01,
     ),
-    BuiltinPositionActuatorCfg(
+    AMEPositionActuatorCfg(
       target_names_expr=(
         ".*_shoulder_.*", ".*_elbow_joint", ".*_wrist_roll_joint",
       ),
@@ -79,21 +80,21 @@ AME_G1_ARTICULATION = EntityArticulationInfoCfg(
       effort_limit=25.0,
       armature=0.01,
     ),
-    BuiltinPositionActuatorCfg(
+    AMEPositionActuatorCfg(
       target_names_expr=(".*_ankle_.*",),
       stiffness=40.0,
       damping=2.0,
       effort_limit=25.0,
       armature=0.01,
     ),
-    BuiltinPositionActuatorCfg(
+    AMEPositionActuatorCfg(
       target_names_expr=("waist_roll_joint", "waist_pitch_joint"),
       stiffness=40.0,
       damping=5.0,
       effort_limit=25.0,
       armature=0.01,
     ),
-    BuiltinPositionActuatorCfg(
+    AMEPositionActuatorCfg(
       target_names_expr=(".*_wrist_pitch_joint", ".*_wrist_yaw_joint"),
       stiffness=40.0,
       damping=10.0,

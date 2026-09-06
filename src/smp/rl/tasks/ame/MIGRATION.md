@@ -16,12 +16,12 @@ Source project: `/home/ksl/HL/AME_Locomotion`.
 | Source item | SMP location | Migration method | Status |
 |---|---|---|---|
 | G1 default pose | `assets/robots/unitree.py` | API translation onto MJLab G1 MJCF | Preserved |
-| PD gains, effort limits and armature | `assets/robots/unitree.py` | API translation | Preserved |
-| Actor/critic observation terms | `ame_env_cfg.py` | Root-frame velocities, original term order | Preserved |
+| PD gains, effort limits and armature | `assets/robots/unitree.py`, `actuators.py` | MuJoCo position control; pre-step PD effort recording | Preserved |
+| Actor/critic observation terms | `ame_env_cfg.py`, `mdp/observations.py` | Root COM linear velocity, original term order | Preserved |
 | 33x21x3 elevation map and noise | `mdp/observations.py` | 20 m ray-start offset; per-reset height bias | Preserved |
 | Command, reset and event ranges | `ame_env_cfg.py` | API translation | Preserved |
-| Torque-limit penalty | `mdp/rewards.py` | Joint-indexed PD effort minus effort clipped to motor limits | Preserved formula |
-| Reward weights and contact history | `mdp/rewards.py` | Direct logic copy + API translation | Preserved |
+| Torque and acceleration penalties | `mdp/rewards.py`, `assets/robots/actuators.py` | Saved pre-step PD efforts and per-physics-step velocity differences | Source measurement timing |
+| Reward weights and contact history | `mdp/rewards.py`, `mdp/contacts.py` | World-frame net normal forces and 1 N contact timing | Source force semantics |
 | Termination and terrain curriculum | `ame_env_cfg.py`, `mdp/commands.py` | API translation | Preserved |
 | Stage-one terrain composition | `terrains/terrain_cfg.py`, `columns.py` | Original proportions expanded into 20 independent columns | Preserved |
 | Stage-two terrain composition | `terrains/finetune_terrain_cfg.py`, `columns.py` | Original proportions expanded into 20 independent columns | Preserved |
@@ -57,10 +57,18 @@ Source project: `/home/ksl/HL/AME_Locomotion`.
 - Ray starts are 20 m above the yaw-aligned torso grid. Map coordinates remain
   relative to the torso, matching the source observation frame. No missing-ray
   replacement or NaN sanitization is added.
-- The torque-limit reward uses PD gains and effort limits indexed by joint,
-  and compares the same computed effort before and after motor-limit clipping.
-  It does not compare unrelated joint and actuator slots or use solver effort
-  as a substitute for the source actuator's clipped PD estimate.
+- Each actuator records its computed and motor-limit-clipped PD efforts before
+  every physics step. Torque penalties use the final substep's saved efforts.
+  Acceleration penalties use the velocity difference across that physics step,
+  divided by the physics timestep. MuJoCo's position actuator still applies
+  the control; the saved PD effort is Isaac's reward estimate.
+- Critic base linear velocity, linear tracking and foot sliding use body COM
+  velocities, matching Isaac Lab's root/body velocity aliases.
+- AME contact sensors accumulate only the normal component of each solved
+  contact in world coordinates, excluding tangential friction. A net normal
+  force norm greater than 1 N starts contact timing. Existing three-substep
+  force history and air/contact time updates consume these values. The sensors
+  read the solver contacts directly without adding native contact sensors.
 - Isaac static and dynamic friction collapse to MuJoCo sliding friction. The
   original `[0.3, 1.0]` range and 64-bucket per-geometry assignment are kept.
   Robot-local geom indices are mapped through `asset.indexing.geom_ids` before
@@ -87,6 +95,11 @@ Source project: `/home/ksl/HL/AME_Locomotion`.
   format. The supplied `pretrained/ame1.pt` therefore loads directly through
   `AMERunner`; `ame2.pt` uses the explicit `AME-G1-Global` task. No
   actor/critic-format compatibility path is retained.
+- Optimizer parameters follow the source module's `parameters()` order: direct
+  action standard deviation first, followed by the registered child modules.
+  SMP checkpoints saved with the previous std-last order must not restore their
+  optimizer state with this implementation. Start a fresh run or load model
+  weights only; no optimizer-order compatibility branch is added.
 - The solver uses SMP/CMoE's MuJoCo settings: 5 ms simulation step, 10 Newton
   iterations and 20 line-search iterations.
 - AME has no RND or symmetry implementation. Their unused constructor arguments
@@ -107,6 +120,9 @@ Source project: `/home/ksl/HL/AME_Locomotion`.
   zero reset velocities, observations, rewards, ray hits and partial resets.
 - These checks validate execution and the corrected mappings, not convergence.
 - No further validation is performed for the scan/collision split, as requested.
+- The subsequent COM velocity, normal-force sensor, substep reward measurement
+  and optimizer-order changes have not been executed or tested, as requested.
+  The earlier checks above do not validate these changes or training convergence.
 
 ## Lessons checked against CMoE
 

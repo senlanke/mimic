@@ -4,6 +4,7 @@ from mjlab.envs.mdp import *
 from mjlab.tasks.velocity.mdp import *
 
 from .commands import *
+from .contacts import *
 from .events import *
 from .observations import *
 from .rewards import *

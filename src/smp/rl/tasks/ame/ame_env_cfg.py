@@ -17,7 +17,7 @@ from mjlab.managers.reward_manager import RewardTermCfg
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.managers.termination_manager import TerminationTermCfg
 from mjlab.scene import SceneCfg
-from mjlab.sensor import ContactMatch, ContactSensorCfg, ObjRef, RayCastSensorCfg
+from mjlab.sensor import ContactMatch, ObjRef, RayCastSensorCfg
 from mjlab.sim import MujocoCfg, SimulationCfg
 from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
 from mjlab.terrains import TerrainEntityCfg
@@ -51,7 +51,7 @@ def g1_ame_env_cfg(
     exclude_parent_body=True,
     include_geom_groups=(0,),
   )
-  feet_contact = ContactSensorCfg(
+  feet_contact = mdp.AMEContactSensorCfg(
     name="feet_contact",
     primary=ContactMatch(
       mode="body",
@@ -64,7 +64,7 @@ def g1_ame_env_cfg(
     track_air_time=True,
     history_length=3,
   )
-  undesired_contact = ContactSensorCfg(
+  undesired_contact = mdp.AMEContactSensorCfg(
     name="undesired_contact",
     primary=ContactMatch(
       mode="body",
@@ -76,7 +76,7 @@ def g1_ame_env_cfg(
     reduce="netforce",
     history_length=3,
   )
-  illegal_contact = ContactSensorCfg(
+  illegal_contact = mdp.AMEContactSensorCfg(
     name="illegal_contact",
     primary=ContactMatch(
       mode="body",
@@ -119,7 +119,7 @@ def g1_ame_env_cfg(
   }
   critic_terms = {
     "base_lin_vel": ObservationTermCfg(
-      func=envs_mdp.base_lin_vel,
+      func=mdp.base_lin_vel,
     ),
     "base_ang_vel": ObservationTermCfg(
       func=envs_mdp.base_ang_vel,
@@ -234,8 +234,8 @@ def g1_ame_env_cfg(
       func=mdp.undesired_contacts, weight=-1.0,
       params={"sensor_name": undesired_contact.name, "threshold": 1.0},
     ),
-    "dof_torques_l2": RewardTermCfg(func=envs_mdp.joint_torques_l2, weight=-1.5e-7),
-    "dof_acc_l2": RewardTermCfg(func=envs_mdp.joint_acc_l2, weight=-1.25e-7),
+    "dof_torques_l2": RewardTermCfg(func=mdp.joint_torques_l2, weight=-1.5e-7),
+    "dof_acc_l2": RewardTermCfg(func=mdp.joint_acc_l2, weight=-1.25e-7),
     "dof_vel_l2": RewardTermCfg(func=envs_mdp.joint_vel_l2, weight=-0.001),
     "dof_pos_limits": RewardTermCfg(func=envs_mdp.joint_pos_limits, weight=-1.0),
     "dof_torques_limits": RewardTermCfg(

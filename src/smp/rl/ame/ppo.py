@@ -299,6 +299,7 @@ class AMEPPO:
 
   def _ordered_parameters(self) -> list[nn.Parameter]:
     modules = [
+      self.actor.distribution,
       self.actor.cnns["map_cnn"],
       self.actor.proprio_embedding,
       self.critic.proprio_embedding,
@@ -306,7 +307,7 @@ class AMEPPO:
     if self.actor.attach_global:
       modules.extend([self.actor.global_encoder, self.actor.query_projector])
     modules.extend(
-      [self.actor.cnns["mha"], self.actor.mlp, self.critic.mlp, self.actor.distribution]
+      [self.actor.cnns["mha"], self.actor.mlp, self.critic.mlp]
     )
     return [parameter for module in modules for parameter in module.parameters()]
 
