@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import copy
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 
 import mujoco
 import numpy as np
@@ -11,7 +11,6 @@ from mjlab.terrains.terrain_generator import TerrainOutput
 
 from smp.rl.tasks.cmoe.height_field.hf_terrains_cfg import (
   HfTerrainBaseCfg,
-  _height_field_to_hfield_surface_mesh,
   _height_field_to_output,
 )
 
@@ -22,37 +21,37 @@ from . import loco_hf_terrains
 class _AMEHeightFieldCfg(HfTerrainBaseCfg):
   horizontal_scale: float = 0.05
   vertical_scale: float = 0.005
-  slope_threshold: float = 0.75
-  _rng: np.random.Generator = field(init=False, repr=False)
-  height_fields: list[np.ndarray] = field(default_factory=list, init=False, repr=False)
 
   def function(self, difficulty: float, spec: mujoco.MjSpec, rng: np.random.Generator) -> TerrainOutput:
-    self._rng = rng
-    width_pixels = int(self.size[0] / self.horizontal_scale)
-    length_pixels = int(self.size[1] / self.horizontal_scale)
-    border_pixels = int(self.border_width / self.horizontal_scale)
+    width_pixels = int(self.size[0] / self.horizontal_scale) + 1
+    length_pixels = int(self.size[1] / self.horizontal_scale) + 1
+    border_pixels = int(self.border_width / self.horizontal_scale) + 1
     raw = np.zeros((width_pixels, length_pixels), dtype=np.int16)
     cfg_for_gen = copy.deepcopy(self)
     cfg_for_gen.size = (
       (width_pixels - 2 * border_pixels) * self.horizontal_scale,
       (length_pixels - 2 * border_pixels) * self.horizontal_scale,
     )
-    generated = self._generate_height_field(difficulty, cfg_for_gen)
+    generated = self.generate(difficulty, cfg_for_gen, rng)
     raw[border_pixels:-border_pixels, border_pixels:-border_pixels] = generated
-    self.height_fields.append(raw)
-
-    collision_cfg = replace(self, horizontal_scale=0.1)
-    output = _height_field_to_output(
-      heights=raw[::2, ::2].T,
-      cfg=collision_cfg,
+    scan = _height_field_to_output(
+      heights=raw.T,
+      cfg=self,
       spec=spec,
       rng=rng,
     )
-    output.instinct_surface_mesh = _height_field_to_hfield_surface_mesh(raw.T, self)
-    return output
-
-  def _generate_height_field(self, difficulty: float, cfg_for_gen) -> np.ndarray:
-    return self.generate(difficulty, cfg_for_gen, self._rng)
+    scan.geometries[0].geom.contype = 0
+    scan.geometries[0].geom.conaffinity = 0
+    collision = _height_field_to_output(
+      heights=raw[::2, ::2].T,
+      cfg=replace(self, horizontal_scale=0.1),
+      spec=spec,
+      rng=rng,
+    )
+    # Group 4 is excluded from the height scanner and hidden by default.
+    collision.geometries[0].geom.group = 4
+    scan.geometries.extend(collision.geometries)
+    return scan
 
 
 @dataclass(kw_only=True)

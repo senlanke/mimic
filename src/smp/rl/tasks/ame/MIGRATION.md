@@ -15,15 +15,16 @@ Source project: `/home/ksl/HL/AME_Locomotion`.
 
 | Source item | SMP location | Migration method | Status |
 |---|---|---|---|
-| G1 joint order and default pose | `assets/robots/unitree.py` | API translation onto MJLab G1 MJCF | Preserved |
+| G1 default pose | `assets/robots/unitree.py` | API translation onto MJLab G1 MJCF | Preserved |
 | PD gains, effort limits and armature | `assets/robots/unitree.py` | API translation | Preserved |
-| Actor/critic observation order | `ame_env_cfg.py` | API translation | Preserved |
-| 33x21x3 elevation map and noise | `mdp/observations.py` | API translation | Preserved |
+| Actor/critic observation terms | `ame_env_cfg.py` | Root-frame velocities, original term order | Preserved |
+| 33x21x3 elevation map and noise | `mdp/observations.py` | 20 m ray-start offset; per-reset height bias | Preserved |
 | Command, reset and event ranges | `ame_env_cfg.py` | API translation | Preserved |
-| Reward formulas, weights and contact history | `mdp/rewards.py` | Direct logic copy + API translation | Preserved |
+| Torque-limit penalty | `mdp/rewards.py` | Joint-indexed PD effort minus effort clipped to motor limits | Preserved formula |
+| Reward weights and contact history | `mdp/rewards.py` | Direct logic copy + API translation | Preserved |
 | Termination and terrain curriculum | `ame_env_cfg.py`, `mdp/commands.py` | API translation | Preserved |
-| Stage-one terrain composition | `terrains/terrain_cfg.py` | Direct parameters + engine translation | Preserved |
-| Stage-two terrain composition | `terrains/finetune_terrain_cfg.py` | Direct parameters + engine translation | Preserved |
+| Stage-one terrain composition | `terrains/terrain_cfg.py`, `columns.py` | Original proportions expanded into 20 independent columns | Preserved |
+| Stage-two terrain composition | `terrains/finetune_terrain_cfg.py`, `columns.py` | Original proportions expanded into 20 independent columns | Preserved |
 | gaps/stakes/stonebridge/stepping-stones formulas | `terrains/loco_hf_terrains.py` | Direct formula copy | Preserved |
 | rails formula | `terrains/rails_terrain_cfg.py` | Direct formula copy using MuJoCo boxes | Preserved |
 | Stage-matched play terrains and fixed play commands | `ame_env_cfg.py` | SMP task separation | Adjusted |
@@ -38,13 +39,38 @@ Source project: `/home/ksl/HL/AME_Locomotion`.
 
 - The Isaac Lab USD is replaced by MJLab's full-collision G1 MJCF. The MJCF
   supplies MuJoCo collision geometry, mass and inertia.
-- The original 5 cm AME height arrays and surface meshes are retained. As in
-  the CMoE migration, MuJoCo collision heightfields use a 10 cm stride while
-  the policy ray grid remains 5 cm.
+- AME generates a complete 5 cm heightfield for raycasting (161 samples per
+  axis on an 8 m tile), with `contype=0` and `conaffinity=0` so it cannot produce
+  contacts. A second heightfield samples every other point for 10 cm collision
+  geometry (81 samples per axis). The collision geometry uses group 4, excluded
+  by the scanner's group-0 filter. Both fields share the same XY extent; the
+  spawn origin comes from the full-resolution field. Border pixel counts follow
+  the source heightfield decorator. The unused surface mesh and height-array
+  cache were removed. As explicitly selected for this migration, steep edges retain
+  MuJoCo heightfield triangulation; Isaac's `slope_threshold` vertex shifts
+  into vertical faces are not represented.
+- Terrain columns follow the source cumulative-proportion allocation. Each
+  column is a separate MJLab sub-terrain entry, preserving 20 independent
+  columns under MJLab's one-column-per-entry curriculum generator.
+- Joint reset uses zero position and velocity offsets. This equals the source
+  default pose multiplied by 1 and default zero velocity multiplied by [-1, 1].
+- Ray starts are 20 m above the yaw-aligned torso grid. Map coordinates remain
+  relative to the torso, matching the source observation frame. No missing-ray
+  replacement or NaN sanitization is added.
+- The torque-limit reward uses PD gains and effort limits indexed by joint,
+  and compares the same computed effort before and after motor-limit clipping.
+  It does not compare unrelated joint and actuator slots or use solver effort
+  as a substitute for the source actuator's clipped PD estimate.
 - Isaac static and dynamic friction collapse to MuJoCo sliding friction. The
   original `[0.3, 1.0]` range and 64-bucket per-geometry assignment are kept.
+  Robot-local geom indices are mapped through `asset.indexing.geom_ids` before
+  writing the global model; terrain friction is not randomized by this event.
   MuJoCo has no direct rigid-material restitution field equivalent to Isaac's
   `restitution_range=(0.0, 0.1)`, so no substitute parameter is introduced.
+- Finetune torso mass randomization also scales the default principal inertia
+  by `new_mass / default_mass`, matching Isaac Lab's default
+  `recompute_inertia=True`. Body indices are mapped into the global model and
+  MuJoCo constants are recomputed after the event.
 - Isaac's actuator `velocity_limit_sim` has no direct MuJoCo actuator field.
   Effort limits and PD control are preserved; no torque-speed approximation or
   artificial velocity clamp is added.
@@ -63,5 +89,35 @@ Source project: `/home/ksl/HL/AME_Locomotion`.
   actor/critic-format compatibility path is retained.
 - The solver uses SMP/CMoE's MuJoCo settings: 5 ms simulation step, 10 Newton
   iterations and 20 line-search iterations.
+- AME has no RND or symmetry implementation. Their unused constructor arguments
+  and config resolvers were removed; supplying these algorithm options now
+  produces Python's normal unexpected-keyword error. The runner's RND logging
+  metadata remains `None`.
 
-No training, simulation or import validation was run, as requested.
+## Validation
+
+- Before separating scan and collision geometry, generated every stage-one and
+  stage-two column and verified 20 columns per stage and 161x161 height samples.
+- Verified torque penalties with deliberately shuffled actuator ordering:
+  zero below effort limits and the exact excess above the limits.
+- Verified per-reset map bias writes back only to selected environment rows.
+- Ran a 16-environment GPU rollout and one AMEPPO update on stage-one terrain
+  with one difficulty row. Observations were finite and every scan ray hit.
+- Ran a 20-environment Finetune GPU smoke check covering startup randomization,
+  zero reset velocities, observations, rewards, ray hits and partial resets.
+- These checks validate execution and the corrected mappings, not convergence.
+- No further validation is performed for the scan/collision split, as requested.
+
+## Lessons checked against CMoE
+
+See `CMOE_MJLAB_MIGRATION_NOTES_zh-CN.md` at the repository root. Its 10 cm
+collision grid addresses observed MuJoCo Warp heightfield collision overflow;
+it is not an algorithm change. CMoE separately reads its original 5 cm height
+arrays in `cmoe_scan_heights`. AME's raycasting does not use that array sampler,
+so merely retaining an unused surface mesh does not preserve fine observations.
+Short smoke checks do not establish collision capacity or long-run stability.
+
+CMoE's action delay and command-before-reward step order are specific to its
+source task. AME retains its own source's no-delay control and command update
+after reward/reset. No CMoE-specific PPO tuning, noise clamps or NaN replacement
+is introduced.

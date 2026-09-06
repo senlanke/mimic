@@ -7,9 +7,13 @@ from typing import Any
 import torch
 import torch.nn as nn
 from rsl_rl.env import VecEnv
-from rsl_rl.extensions import resolve_rnd_config, resolve_symmetry_config
 from rsl_rl.storage import RolloutStorage
-from rsl_rl.utils import compile_model, resolve_callable, resolve_obs_groups, resolve_optimizer
+from rsl_rl.utils import (
+  compile_model,
+  resolve_callable,
+  resolve_obs_groups,
+  resolve_optimizer,
+)
 from tensordict import TensorDict
 
 
@@ -36,11 +40,8 @@ class AMEPPO:
     desired_kl: float = 0.01,
     normalize_advantage_per_mini_batch: bool = False,
     device: str = "cpu",
-    rnd_cfg: dict | None = None,
-    symmetry_cfg: dict | None = None,
     multi_gpu_cfg: dict | None = None,
   ) -> None:
-    del rnd_cfg, symmetry_cfg
     self.device = device
     self.is_multi_gpu = multi_gpu_cfg is not None
     if multi_gpu_cfg is not None:
@@ -392,10 +393,6 @@ class AMEPPO:
     cfg["obs_groups"] = resolve_obs_groups(
       obs, cfg["obs_groups"], ["actor", "critic"]
     )
-    cfg["algorithm"] = resolve_rnd_config(
-      cfg["algorithm"], obs, cfg["obs_groups"], env
-    )
-    cfg["algorithm"] = resolve_symmetry_config(cfg["algorithm"], env)
     cfg["algorithm"].pop("share_cnn_encoders")
 
     actor = actor_class(
@@ -434,6 +431,7 @@ class AMEPPO:
       **cfg["algorithm"],
       multi_gpu_cfg=cfg["multi_gpu"],
     )
+    cfg["algorithm"]["rnd_cfg"] = None  # RSL-RL runner logging metadata.
     algorithm.compile(cfg.get("torch_compile_mode"))
     return algorithm
 

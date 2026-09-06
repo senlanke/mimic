@@ -3,6 +3,7 @@
 from mjlab import terrains as terrain_gen
 from mjlab.terrains import TerrainGeneratorCfg
 
+from .columns import expand_terrain_columns
 from .loco_hf_terrains_cfg import (
   HfConcentricGapTerrainCfg,
   HfPyramidSlopedTerrainCfg,
@@ -53,5 +54,7 @@ ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
     ),
   },
 )
+
+expand_terrain_columns(ROUGH_TERRAINS_CFG)
 
 __all__ = ["ROUGH_TERRAINS_CFG"]

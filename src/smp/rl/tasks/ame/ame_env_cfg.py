@@ -17,7 +17,7 @@ from mjlab.managers.reward_manager import RewardTermCfg
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.managers.termination_manager import TerminationTermCfg
 from mjlab.scene import SceneCfg
-from mjlab.sensor import ContactMatch, ContactSensorCfg, GridPatternCfg, ObjRef, RayCastSensorCfg
+from mjlab.sensor import ContactMatch, ContactSensorCfg, ObjRef, RayCastSensorCfg
 from mjlab.sim import MujocoCfg, SimulationCfg
 from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
 from mjlab.terrains import TerrainEntityCfg
@@ -46,8 +46,8 @@ def g1_ame_env_cfg(
     name="height_scanner",
     frame=ObjRef(type="body", name="torso_link", entity="robot"),
     ray_alignment="yaw",
-    pattern=GridPatternCfg(size=(1.6, 1.0), resolution=0.05),
-    max_distance=5.0,
+    pattern=mdp.ElevationGridPatternCfg(size=(1.6, 1.0), resolution=0.05),
+    max_distance=1.0e6,
     exclude_parent_body=True,
     include_geom_groups=(0,),
   )
@@ -91,8 +91,7 @@ def g1_ame_env_cfg(
 
   actor_terms = {
     "base_ang_vel": ObservationTermCfg(
-      func=envs_mdp.builtin_sensor,
-      params={"sensor_name": "robot/imu_ang_vel"},
+      func=envs_mdp.base_ang_vel,
       scale=0.2,
       noise=Unoise(n_min=-0.2, n_max=0.2),
     ),
@@ -120,12 +119,10 @@ def g1_ame_env_cfg(
   }
   critic_terms = {
     "base_lin_vel": ObservationTermCfg(
-      func=envs_mdp.builtin_sensor,
-      params={"sensor_name": "robot/imu_lin_vel"},
+      func=envs_mdp.base_lin_vel,
     ),
     "base_ang_vel": ObservationTermCfg(
-      func=envs_mdp.builtin_sensor,
-      params={"sensor_name": "robot/imu_ang_vel"},
+      func=envs_mdp.base_ang_vel,
       scale=0.2,
     ),
     "projected_gravity": ObservationTermCfg(func=envs_mdp.projected_gravity),
@@ -175,7 +172,7 @@ def g1_ame_env_cfg(
       func=envs_mdp.reset_joints_by_offset,
       mode="reset",
       params={
-        "position_range": (0.0, 0.0), "velocity_range": (-1.0, 1.0),
+        "position_range": (0.0, 0.0), "velocity_range": (0.0, 0.0),
         "asset_cfg": SceneEntityCfg("robot", joint_names=(".*",)),
       },
     ),
@@ -189,11 +186,11 @@ def g1_ame_env_cfg(
       },
     ),
     "add_base_mass": EventTermCfg(
-      func=dr.body_mass,
+      func=mdp.randomize_body_mass,
       mode="startup",
       params={
         "asset_cfg": SceneEntityCfg("robot", body_names=("torso_link",)),
-        "operation": "add", "ranges": (-1.0, 3.0),
+        "mass_range": (-1.0, 3.0),
       },
     ),
     "base_com": EventTermCfg(

@@ -2,15 +2,24 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import torch
 from mjlab.managers.observation_manager import ObservationTermCfg
-from mjlab.sensor import RayCastSensor
+from mjlab.sensor import GridPatternCfg, RayCastSensor
 from mjlab.utils.lab_api.math import quat_apply_inverse, yaw_quat
 
 if TYPE_CHECKING:
   from mjlab.envs import ManagerBasedRlEnv
+
+
+@dataclass
+class ElevationGridPatternCfg(GridPatternCfg):
+  def generate_rays(self, mj_model, device):
+    starts, directions = super().generate_rays(mj_model, device)
+    starts[:, 2] = 20.0
+    return starts, directions
 
 
 class elevation_map:
@@ -20,7 +29,7 @@ class elevation_map:
     self.offset = torch.zeros(env.num_envs, 1, device=env.device)
 
   def reset(self, env_ids: torch.Tensor | slice) -> None:
-    self.offset[env_ids].uniform_(-0.05, 0.05)
+    self.offset[env_ids] = torch.empty_like(self.offset[env_ids]).uniform_(-0.05, 0.05)
 
   def __call__(
     self, env: "ManagerBasedRlEnv", sensor_name: str, noise: bool = False
@@ -41,4 +50,4 @@ class elevation_map:
     return local.reshape(num_envs, num_rays * 3)
 
 
-__all__ = ["elevation_map"]
+__all__ = ["ElevationGridPatternCfg", "elevation_map"]
