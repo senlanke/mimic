@@ -64,7 +64,7 @@ class AMEContactSensor(ContactSensor):
     self._model = model.struct
     self._device = device
     body_primary = {
-      mj_model.body(name).id: index
+      mj_model.body(f"{self.cfg.primary.entity}/{name}").id: index
       for index, name in enumerate(self.primary_names)
     }
     geom_primary = torch.tensor(
